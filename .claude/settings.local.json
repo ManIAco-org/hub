@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where specify *)",
+      "Bash(where uvx *)",
+      "Bash(where uv *)",
+      "Bash(where python *)",
+      "Bash(where git *)",
+      "Bash(dir \"C:\\\\Users\\\\PITON\\\\.claude\\\\commands\")",
+      "Bash(findstr /i speckit)",
+      "Bash(dir \"C:\\\\Users\\\\PITON\\\\.claude\\\\skills\")",
+      "Bash(specify --version)",
+      "Bash(specify --help)",
+      "Bash(ls \"C:\\\\Users\\\\PITON\\\\.claude\\\\commands\" 2>&1 | head -50 & echo --- & ls \"C:\\\\Users\\\\PITON\\\\.claude\\\\skills\" 2>&1 | head -50)",
+      "Bash(specify init *)",
+      "Bash(dir \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" /a)",
+      "PowerShell($env:PYTHONIOENCODING = \"utf-8\"; $env:PYTHONUTF8 = \"1\"; & specify init --here --ai claude --script ps --force --ignore-agent-tools 2>&1 | Select-Object -Last 60)"
+    ]
+  }
+}
