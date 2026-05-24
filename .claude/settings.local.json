@@ -14,7 +14,12 @@
       "Bash(ls \"C:\\\\Users\\\\PITON\\\\.claude\\\\commands\" 2>&1 | head -50 & echo --- & ls \"C:\\\\Users\\\\PITON\\\\.claude\\\\skills\" 2>&1 | head -50)",
       "Bash(specify init *)",
       "Bash(dir \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" /a)",
-      "PowerShell($env:PYTHONIOENCODING = \"utf-8\"; $env:PYTHONUTF8 = \"1\"; & specify init --here --ai claude --script ps --force --ignore-agent-tools 2>&1 | Select-Object -Last 60)"
+      "PowerShell($env:PYTHONIOENCODING = \"utf-8\"; $env:PYTHONUTF8 = \"1\"; & specify init --here --ai claude --script ps --force --ignore-agent-tools 2>&1 | Select-Object -Last 60)",
+      "Bash(git -C \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" config user.name)",
+      "Bash(git -C \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" config user.email)",
+      "Bash(git -C \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" status --short)",
+      "Bash(git -C \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" branch --show-current)",
+      "Bash(git -C \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" add -A)"
     ]
   }
 }
