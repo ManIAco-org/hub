@@ -1,33 +1,40 @@
 <!--
-SYNC IMPACT REPORT — v0.0.0 → v1.0.0 (initial ratification)
+SYNC IMPACT REPORT — v1.0.0 → v1.1.0 (cost caps adjustment)
 =============================================================
-Version change: (none) → 1.0.0
-Bump rationale: MAJOR — primera ratificacion de la constitution del Hub ManIAcos. Establece 9 principios fundacionales, constraints tecnicos y workflow de desarrollo. No existian principios previos para superseder.
+Version change: 1.0.0 → 1.1.0
+Bump rationale: MINOR — ajuste de politica de cost caps en Principio VI y Technical Constraints.
+Motivacion: los caps originales de v1.0.0 ($500 soft / $1500 hard) eran demasiado permisivos para
+la fase de bootstrapping. Con el volumen real proyectado en V1 (<200 leads/dia, <50 WA/dia) los
+caps a $200/$400 son mas que suficientes y fuerzan disciplina de costo desde el primer dia.
 
-Principios definidos (9):
+Cambios en v1.1.0:
+  - Soft cap:      $500/mes  → $200/mes
+  - Banner yellow: 80% ($400) → 70% ($140)
+  - Banner red:    100% ($500) → 100% ($200)
+  - Override:      24hs → 12hs (mas friction, menos riesgo de olvido)
+  - Hard ceiling:  $1500/mes ($3x) → $400/mes ($2x soft cap)
+  - Technical Constraints: actualizado para reflejar nuevos caps
+  - Rationale de Principio VI: actualizado con montos correctos
+
+Principios sin cambio (9):
   I.    Noe-First UX (NON-NEGOTIABLE)
   II.   Cero Comandos Manuales para Operadores
   III.  Atribucion Humana Exclusiva
   IV.   Human-in-the-Loop para Acciones Irreversibles (V1)
   V.    Vault como Single Source of Truth
-  VI.   Cost-Aware por Diseño (soft cap + override + hard ceiling)
+  VI.   Cost-Aware por Diseño (soft cap + override + hard ceiling) ← ACTUALIZADO montos
   VII.  Simplicidad Sobre Generalidad (V1)
   VIII. Vibecoding-Native Architecture
   IX.   Agents as Pure Functions
-
-Secciones agregadas:
-  - Technical Constraints
-  - Development Workflow
-  - Governance
 
 Templates revisados/sincronizados:
   PENDIENTE .specify/templates/plan-template.md      — agregar "Constitution Check" con 9 principios
   PENDIENTE .specify/templates/spec-template.md      — agregar pregunta UX Noe + audit log requirement
   PENDIENTE .specify/templates/tasks-template.md     — categoria "smoke E2E" obligatoria pre-deploy
   OK        .specify/templates/checklist-template.md — sin cambios necesarios V1
-  PENDIENTE CLAUDE.md (raiz)                         — agregar referencia a esta constitution
+  OK        CLAUDE.md (raiz)                         — referencia a constitution agregada en v1.0.0
 
-Follow-up TODOs:
+Follow-up TODOs (carryover de v1.0.0):
   - Definir score threshold exacto para auto-send V1.5 (placeholder: <40)
   - Diseñar UI batch-approval (referencia: swipe pattern Tinder / checkbox bulk) — va en spec
   - Especificar columnas exactas de agent_runs en data model (V1 spec)
@@ -90,9 +97,9 @@ Implementacion:
 Cada accion de agente IA DEBE registrar tokens consumidos y costo USD estimado en la tabla central `agent_runs`. El Dashboard del Hub muestra costo del mes actual versus el cap configurado.
 
 Politica de caps (V1):
-- **Soft cap**: $500 USD/mes. Banner amarillo visible a partir del 80% ($400). Banner rojo en UI al alcanzar 100% ($500).
-- **Override**: cualquier socio puede activar "Override 24hs" con un click. La activacion se loggea (`status='override'`, `human_approved_by=<socio>`, motivo opcional en texto libre).
-- **Hard ceiling**: $1500 USD/mes ($1500 = 3x soft cap). Al alcanzarlo se bloquean automaticamente TODOS los agentes (incluidos los criticos como Sender). Solo se desbloquean modificando manualmente la variable en Vaultwarden, con aprobacion explicita de 2 de los 3 socios. Diseñado como red de seguridad ante runaway agent (loops infinitos).
+- **Soft cap**: $200 USD/mes. Banner amarillo visible a partir del 70% ($140). Banner rojo en UI al alcanzar 100% ($200).
+- **Override**: cualquier socio puede activar "Override 12hs" con un click. La activacion se loggea (`status='override'`, `human_approved_by=<socio>`, motivo opcional en texto libre). El override expira automaticamente a las 12hs o al cierre de sesion, lo que ocurra primero.
+- **Hard ceiling**: $400 USD/mes ($400 = 2x soft cap). Al alcanzarlo se bloquean automaticamente TODOS los agentes (incluidos los criticos como Sender). Solo se desbloquean modificando manualmente la variable en Vaultwarden, con aprobacion explicita de 2 de los 3 socios. Diseñado como red de seguridad ante runaway agent (loops infinitos).
 
 Schema minimo de `agent_runs`:
 ```
@@ -112,7 +119,7 @@ created_at        timestamptz default now()
 
 Retencion minima: 90 dias. Backup mensual a Supabase Storage.
 
-**Rationale**: los $200-450/mes operativos se transforman en $2000+/mes silenciosamente cuando un agente entra en loop. Sin observabilidad granular de costo, no hay control de costo.
+**Rationale**: los $50-150/mes operativos se transforman en $800+/mes silenciosamente cuando un agente entra en loop. Con caps ajustados ($200 soft, $400 hard) el equipo mantiene disciplina de costo desde el dia 1 sin sacrificar capacidad operativa real en V1.
 
 ### VII. Simplicidad Sobre Generalidad (V1)
 
@@ -157,7 +164,7 @@ Cada agente IA del Hub DEBE ser idempotente y testable de forma aislada:
 - **Hosting agentes pesados / integraciones**: server Oracle Cloud ARM Ampere existente (n8n, Evolution API, Vaultwarden, Caddy reverse proxy).
 - **Secrets**: Vaultwarden UNICA fuente. PROHIBIDO `.env` commiteado. El Hub lee secrets en runtime via Vaultwarden API. `.env.local` para desarrollo individual esta permitido pero no se commitea.
 - **Vault**: repo git separado `maniacos-dev/vault`, montado en `/srv/maniacos/vault/`, sync automatico via hooks.
-- **Cost cap V1**: soft $500 USD/mes (incluye Claude API + infra + APIs externas como Resend, Twilio, etc.). Hard ceiling $1500 USD/mes (red de seguridad).
+- **Cost cap V1**: soft $200 USD/mes (incluye Claude API + infra + APIs externas como Resend, serpapi, Evolution API, etc.). Hard ceiling $400 USD/mes (red de seguridad, 2x soft cap).
 - **Browser support V1**: solo Chromium-based desktop (Chrome, Edge, Brave) en viewport `≥1280x800`. No mobile, no Firefox, no Safari.
 - **Auditabilidad**: tabla `agent_runs` registra cada invocacion de agente con retencion minima 90 dias. Toda accion humana de aprobacion queda loggeada con `approved_by` + `timestamp`.
 - **Time-to-vibe (metrica)**: desde que un miembro abre `hub.maniaco.online` hasta que tiene una sesion de Claude Code activa en el terminal flotante → **<10 segundos** en conexion normal (≥10 Mbps). Cualquier feature que rompa esta metrica entra en revision.
@@ -195,4 +202,4 @@ Esta constitution supersede cualquier practica informal del equipo. Enmiendas re
 
 El cumplimiento se verifica en cada PR contra el "Constitution Check" del template de plan. Complejidad agregada que viole un principio DEBE ser justificada explicitamente en la descripcion del PR (seccion "Complexity Justification").
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-05-24
+**Version**: 1.1.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-05-24
