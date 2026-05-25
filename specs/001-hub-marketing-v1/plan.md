@@ -28,7 +28,7 @@ Hub ManIAcos V1 es una aplicación web interna (3 usuarios) para el equipo de la
 **Storage**:
 - PostgreSQL via Supabase (RLS habilitado, schema definido en `supabase/migrations/`)
 - Supabase Storage (backups de DB mensuales)
-- Git repo `maniacos-dev/vault` montado en `/srv/maniacos/vault/` en Oracle ARM
+- Git repo `ManIAco-org/vault` montado en `/srv/maniacos/vault/` en Oracle ARM
 
 **Testing**:
 - Playwright (5 smoke tests E2E, corren en CI pre-deploy a `hub.maniaco.online`)

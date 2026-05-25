@@ -23,7 +23,7 @@ Guía para levantar el entorno de desarrollo local. Target: Franco o Lucho arran
 ## Paso 1: Clonar y setup inicial
 
 ```bash
-git clone git@github.com:maniacos-dev/hub.git
+git clone git@github.com:ManIAco-org/hub.git
 cd hub
 bun install
 ```

@@ -16,7 +16,7 @@
 | 3 | `/speckit-clarify` | ✅ Done | spec.md actualizado, 23 Q&A incorporados |
 | 4 | `/speckit-plan` | ⏳ Pendiente OK de Franco | `specs/001-hub-marketing-v1/plan.md` |
 | 5 | `/speckit-tasks` | ⏳ Pendiente | `specs/001-hub-marketing-v1/tasks.md` |
-| 6 | `/speckit-taskstoissues` | ⏳ Pendiente | GitHub Issues en `maniacos-dev/hub` |
+| 6 | `/speckit-taskstoissues` | ⏳ Pendiente | GitHub Issues en `ManIAco-org/hub` |
 
 ---
 

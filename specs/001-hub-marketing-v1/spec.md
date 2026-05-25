@@ -172,7 +172,7 @@ Un dashboard especifico del departamento Marketing muestra: funnel total (leads 
 
 ### User Story 10 — Vault: notas markdown auto-versionadas (Priority: P3)
 
-Cualquier miembro crea, edita y consulta notas markdown del vault desde una UI tipo Obsidian-light: panel izquierdo arbol de carpetas (`clientes/`, `decisiones/`, `lessons-learned/`, `specs/`, `sesiones/`), panel central editor markdown con preview, panel derecho backlinks/tags. Las notas se sincronizan automaticamente al repo git `maniacos-dev/vault` sin intervencion manual.
+Cualquier miembro crea, edita y consulta notas markdown del vault desde una UI tipo Obsidian-light: panel izquierdo arbol de carpetas (`clientes/`, `decisiones/`, `lessons-learned/`, `specs/`, `sesiones/`), panel central editor markdown con preview, panel derecho backlinks/tags. Las notas se sincronizan automaticamente al repo git `ManIAco-org/vault` sin intervencion manual.
 
 **Why this priority**: vault es transversal pero su UI completa puede esperar a Sprint 4. Las notas pueden ya estar siendo creadas por Claude via hooks aunque la UI del Hub no este lista.
 
@@ -313,7 +313,7 @@ Una vista chat-like donde un miembro escribe lo que necesita en lenguaje natural
 #### Vault
 
 - **FR-060**: La UI de vault MUST permitir crear, editar y eliminar notas markdown con preview en tiempo real.
-- **FR-061**: Cada cambio en una nota MUST commitearse al repo git `maniacos-dev/vault` dentro de 30 segundos, con autor humano (sin atribucion AI).
+- **FR-061**: Cada cambio en una nota MUST commitearse al repo git `ManIAco-org/vault` dentro de 30 segundos, con autor humano (sin atribucion AI).
 - **FR-062**: La UI MUST resolver wikilinks `[[archivo]]` con click directo entre notas.
 - **FR-063**: La UI MUST proveer busqueda full-text global sobre todo el vault con resultados rankeados.
 - **FR-064**: El sistema MUST detectar conflictos de edicion simultanea entre miembros y presentar merge view (NO machacar).

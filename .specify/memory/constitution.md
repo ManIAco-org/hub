@@ -86,7 +86,7 @@ Evolucion V1.5: cuando existan ≥500 outreaches loggeados con resultado, se hab
 Lo que no esta versionado en el vault git (decision del equipo, contexto de cliente, lesson learned, spec, draft aprobado) NO EXISTE para el equipo. La memoria conversacional de Claude Code se descarta entre sesiones; solo lo persistido al vault sobrevive.
 
 Implementacion:
-- Vault = repo git separado (`maniacos-dev/vault`), montado en `/srv/maniacos/vault/`.
+- Vault = repo git separado (`ManIAco-org/vault`), montado en `/srv/maniacos/vault/`.
 - Auto-sync: hook `SessionStart` hace `git pull` silencioso; hook `Stop` hace `git push` en background tras cada respuesta de Claude; hook `SessionEnd` archiva `sesion-actual.md` con fecha y hace push final.
 - Estructura: `clientes/`, `decisiones/`, `lessons-learned/`, `specs/`, `sesiones/<YYYY-MM-DD>/`.
 
@@ -163,7 +163,7 @@ Cada agente IA del Hub DEBE ser idempotente y testable de forma aislada:
 - **Hosting Hub frontend**: Vercel (Hobby plan, custom domain `hub.maniaco.online`). Auto-deploy desde `master`.
 - **Hosting agentes pesados / integraciones**: server Oracle Cloud ARM Ampere existente (n8n, Evolution API, Vaultwarden, Caddy reverse proxy).
 - **Secrets**: Vaultwarden UNICA fuente. PROHIBIDO `.env` commiteado. El Hub lee secrets en runtime via Vaultwarden API. `.env.local` para desarrollo individual esta permitido pero no se commitea.
-- **Vault**: repo git separado `maniacos-dev/vault`, montado en `/srv/maniacos/vault/`, sync automatico via hooks.
+- **Vault**: repo git separado `ManIAco-org/vault`, montado en `/srv/maniacos/vault/`, sync automatico via hooks.
 - **Cost cap V1**: soft $200 USD/mes (incluye Claude API + infra + APIs externas como Resend, serpapi, Evolution API, etc.). Hard ceiling $400 USD/mes (red de seguridad, 2x soft cap).
 - **Browser support V1**: solo Chromium-based desktop (Chrome, Edge, Brave) en viewport `≥1280x800`. No mobile, no Firefox, no Safari.
 - **Auditabilidad**: tabla `agent_runs` registra cada invocacion de agente con retencion minima 90 dias. Toda accion humana de aprobacion queda loggeada con `approved_by` + `timestamp`.
