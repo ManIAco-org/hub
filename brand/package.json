@@ -1,0 +1,19 @@
+{
+  "name": "@maniaco/brand",
+  "version": "1.0.0",
+  "description": "ManIAcos design system — tokens, CSS, brand reference",
+  "main": "tokens.css",
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./tokens.json": "./tokens.json",
+    "./DESIGN.md": "./DESIGN.md"
+  },
+  "files": [
+    "tokens.css",
+    "tokens.json",
+    "DESIGN.md"
+  ],
+  "keywords": ["design-system", "maniaco", "tokens"],
+  "license": "UNLICENSED",
+  "private": true
+}

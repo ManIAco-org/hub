@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ManIAcos Hub — v5</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  /* surfaces */
+  --bg:#0A0A0A; --s1:#111111; --s2:#1A1A1A; --s3:#242424;
+  --border:#262626; --bsub:#181818;
+  /* text */
+  --t1:#EFEFEF; --t2:#8A8F9E; --t3:#525866;
+  /* brand */
+  --acc:#06B6D4; --acc-d:rgba(6,182,212,.1); --acc-b:rgba(6,182,212,.25);
+  /* running/live only */
+  --run:#A3E635; --run-d:rgba(163,230,53,.1); --run-b:rgba(163,230,53,.22);
+  /* states */
+  --ok:#22C55E; --ok-d:rgba(34,197,94,.1); --ok-b:rgba(34,197,94,.22);
+  --warn:#F59E0B; --warn-d:rgba(245,158,11,.1); --warn-b:rgba(245,158,11,.22);
+  --err:#EF4444; --err-d:rgba(239,68,68,.1); --err-b:rgba(239,68,68,.22);
+  /* type */
+  --ui:'Instrument Sans',system-ui,sans-serif;
+  --mono:'Geist Mono','Courier New',monospace;
+  /* radius */
+  --r4:4px; --r6:6px; --r8:8px; --r12:12px; --rF:9999px;
+}
+body{background:#050505;font-family:var(--ui);color:var(--t1);font-size:13px;line-height:1.5}
+a{color:var(--acc);text-decoration:none}
+
+/* ─── NAV ─── */
+.nav{position:sticky;top:0;z-index:100;background:#050505;border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;gap:0}
+.logo{font-family:var(--ui);font-size:17px;font-weight:700;color:var(--t1);padding:13px 0;margin-right:28px;white-space:nowrap;letter-spacing:-.3px}
+.logo em{font-style:normal;color:var(--acc)}
+.ntabs{display:flex;overflow-x:auto;scrollbar-width:none}
+.ntabs::-webkit-scrollbar{display:none}
+.ntab{padding:13px 16px;font-size:12px;font-weight:500;color:var(--t2);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:color .12s,border-color .12s;font-family:var(--ui)}
+.ntab:hover{color:var(--t1)}
+.ntab.on{color:var(--acc);border-bottom-color:var(--acc)}
+.nbadge{font-size:10px;padding:1px 5px;border-radius:var(--rF);background:var(--acc-d);color:var(--acc);margin-left:5px;font-family:var(--mono)}
+.panel{display:none;padding:24px 20px}
+.panel.on{display:block}
+.plabel{font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:18px}
+
+/* ─── HUB SHELL ─── */
+.hub{display:flex;height:calc(100vh - 95px);min-height:600px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r12);overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.55)}
+
+/* ─── SIDEBAR ─── */
+.sb{width:216px;min-width:216px;background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.sb-top{padding:12px 10px 8px;border-bottom:1px solid var(--bsub)}
+.org{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--r8);cursor:pointer}
+.org:hover{background:var(--s2)}
+.org-mark{width:26px;height:26px;border-radius:6px;background:var(--acc);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#000;flex-shrink:0}
+.org-name{font-size:13px;font-weight:600;color:var(--t1);line-height:1}
+.org-sub{font-size:11px;color:var(--t2);margin-top:1px}
+.org-chev{margin-left:auto;color:var(--t3);font-size:10px}
+.sb-sec{padding:8px 10px 2px}
+.sb-sec-lbl{font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase;padding:0 8px;margin-bottom:3px}
+.si{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:var(--r12);cursor:pointer;font-size:12.5px;color:var(--t2);transition:background .1s}
+.si:hover{background:var(--s2);color:var(--t1)}
+.si.on{background:var(--acc-d);color:var(--acc)}
+.si svg{flex-shrink:0;opacity:.7}
+.si.on svg{opacity:1}
+.sibadge{margin-left:auto;font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:var(--rF)}
+.sibadge.c{background:var(--acc-d);color:var(--acc)}
+.sibadge.r{background:var(--run-d);color:var(--run)}
+.sibadge.w{background:var(--warn-d);color:var(--warn)}
+/* client list */
+.cl-list{flex:1;overflow-y:auto;padding:6px 10px;scrollbar-width:thin;scrollbar-color:var(--s3) transparent}
+.cl-hdr{display:flex;align-items:center;justify-content:space-between;padding:0 8px;margin-bottom:3px;cursor:pointer;user-select:none}
+.cl-hdr-lbl{font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase}
+.cl-hdr-chev{font-size:9px;color:var(--t3);transition:transform .15s}
+.cl-hdr.collapsed .cl-hdr-chev{transform:rotate(-90deg)}
+.cl-items{}
+.cl-pill{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:var(--r12);cursor:pointer;transition:background .1s}
+.cl-pill:hover{background:var(--s2)}
+.cl-pill.on{background:var(--s2)}
+.cl-av{width:20px;height:20px;border-radius:var(--r4);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;font-family:var(--mono)}
+.cl-name{font-size:12px;color:var(--t2);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cl-pill.on .cl-name{color:var(--t1)}
+.sdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.sdot.ok{background:var(--ok)}.sdot.r{background:var(--run)}.sdot.w{background:var(--warn)}.sdot.off{background:var(--t3)}
+/* team strip */
+.sb-team{padding:9px 10px;border-top:1px solid var(--bsub);display:flex;gap:5px;align-items:center}
+.tav{width:25px;height:25px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;cursor:pointer;position:relative;border:2px solid var(--s1)}
+.tav .tdot{position:absolute;bottom:0;right:0;width:7px;height:7px;border-radius:50%;background:var(--ok);border:1.5px solid var(--s1)}
+
+/* ─── MAIN ─── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.tbar{height:42px;display:flex;align-items:center;gap:10px;padding:0 18px;border-bottom:1px solid var(--bsub);flex-shrink:0}
+.tbar-t{font-size:13px;font-weight:600;color:var(--t1)}
+.tbar-sep{color:var(--t3);font-size:13px}
+.tbar-s{font-size:12px;color:var(--t2)}
+.acts{margin-left:auto;display:flex;gap:7px;align-items:center}
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:var(--r8);font-size:12px;font-weight:500;border:none;cursor:pointer;transition:transform .1s,box-shadow .1s;font-family:var(--ui);line-height:1}
+.btn:hover{transform:translateY(-1px)}
+.btn-p{background:var(--acc);color:#000}
+.btn-p:hover{box-shadow:0 4px 14px rgba(6,182,212,.3)}
+.btn-s{background:var(--s2);color:var(--acc);border:1px solid var(--acc-b)}
+.btn-s:hover{background:var(--acc-d)}
+.btn-g{background:var(--s2);color:var(--t2);border:1px solid var(--border)}
+.btn-g:hover{color:var(--t1)}
+.btn-sm{padding:3px 8px;font-size:11px}
+/* tab bar inside client */
+.tbbar{display:flex;border-bottom:1px solid var(--bsub);padding:0 18px;flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+.tbbar::-webkit-scrollbar{display:none}
+.tbi{padding:7px 13px;font-size:12px;font-weight:500;color:var(--t2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:color .1s}
+.tbi:hover{color:var(--t1)}
+.tbi.on{color:var(--acc);border-bottom-color:var(--acc)}
+/* scroll */
+.scr{flex:1;overflow-y:auto;padding:14px 18px;scrollbar-width:thin;scrollbar-color:var(--s3) transparent}
+/* client header */
+.ch{display:flex;align-items:center;gap:10px;padding:11px 18px;border-bottom:1px solid var(--bsub);flex-shrink:0}
+.ch-av{width:30px;height:30px;border-radius:var(--r8);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);flex-shrink:0}
+.ch-n{font-size:14px;font-weight:600;color:var(--t1)}
+.ch-s{font-size:11px;color:var(--t2);margin-top:1px}
+
+/* ─── STATUS PILLS ─── */
+.sp{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:var(--rF);font-family:var(--mono);font-size:10px;font-weight:500;white-space:nowrap}
+.sp-ok{background:var(--ok-d);color:var(--ok);border:1px solid var(--ok-b)}
+.sp-w{background:var(--warn-d);color:var(--warn);border:1px solid var(--warn-b)}
+.sp-e{background:var(--err-d);color:var(--err);border:1px solid var(--err-b)}
+.sp-c{background:var(--acc-d);color:var(--acc);border:1px solid var(--acc-b)}
+.sp-r{background:var(--run-d);color:var(--run);border:1px solid var(--run-b)}
+.sp-off{background:var(--s3);color:var(--t3);border:1px solid var(--border)}
+
+/* ─── CARDS ─── */
+.card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r12);padding:14px}
+.card-s{background:var(--s1);border:1px solid var(--border);border-radius:var(--r8);padding:11px 13px}
+.cl-lbl{font-family:var(--mono);font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:11px}
+/* client project card (dashboard) */
+.pcard{background:var(--s1);border:1px solid var(--border);border-radius:var(--r12);padding:14px 15px;cursor:pointer;transition:border-color .15s,transform .1s,box-shadow .1s}
+.pcard:hover{border-color:var(--acc-b);transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.35)}
+.pcard-head{display:flex;align-items:flex-start;gap:9px;margin-bottom:11px}
+.pcard-av{width:34px;height:34px;border-radius:var(--r8);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;font-family:var(--mono);flex-shrink:0}
+.pcard-n{font-size:13px;font-weight:600;color:var(--t1)}
+.pcard-t{font-size:11px;color:var(--t2);margin-top:1px}
+.pcard-rows{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.pcard-row{display:flex;align-items:baseline;gap:7px}
+.pcard-rl{font-family:var(--mono);font-size:10px;color:var(--t3);width:54px;flex-shrink:0}
+.pcard-rv{font-size:11px;color:var(--t2);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcard-rv.hi{color:var(--t1)}
+.pbar{height:3px;background:var(--s3);border-radius:2px;overflow:hidden;margin-top:2px}
+.pbar-f{height:100%;border-radius:2px}
+/* section header */
+.shdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.st{font-size:13px;font-weight:600;color:var(--t1)}
+.sc{font-family:var(--mono);font-size:10px;color:var(--t3);margin-left:6px}
+/* metric strip */
+.mstrip{display:flex;gap:10px;margin-bottom:14px}
+.mc{flex:1;background:var(--s1);border:1px solid var(--border);border-radius:var(--r8);padding:11px 13px}
+.mc-l{font-family:var(--mono);font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+.mc-v{font-size:19px;font-weight:700;color:var(--t1);font-family:var(--mono);line-height:1;font-variant-numeric:tabular-nums}
+.mc-s{font-family:var(--mono);font-size:10px;margin-top:3px;color:var(--t2)}
+/* table */
+.dtbl{width:100%;border-collapse:collapse}
+.dtbl th{text-align:left;font-family:var(--mono);font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;padding:6px 11px;border-bottom:1px solid var(--border);font-weight:500}
+.dtbl td{padding:8px 11px;border-bottom:1px solid var(--bsub);font-size:12px;color:var(--t2);font-variant-numeric:tabular-nums}
+.dtbl tr:hover td{background:rgba(255,255,255,.015)}
+.dtbl .tdn{color:var(--t1);font-weight:500}
+.dtbl .tdm{font-family:var(--mono);font-size:11px}
+/* big metric */
+.bmc{background:var(--s1);border:1px solid var(--border);border-radius:var(--r12);padding:14px 16px}
+.bmc-l{font-family:var(--mono);font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.bmc-v{font-size:26px;font-weight:700;color:var(--t1);font-family:var(--mono);line-height:1;font-variant-numeric:tabular-nums;margin-bottom:5px}
+.bmc-s{font-family:var(--mono);font-size:10px;color:var(--ok)}
+/* activity */
+.actrow{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid var(--bsub);font-size:11.5px}
+.actrow:last-child{border-bottom:none}
+.actav{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;flex-shrink:0;margin-top:1px}
+.acttxt{flex:1;color:var(--t2);line-height:1.5}
+.acttxt strong{color:var(--t1);font-weight:500}
+.acttm{font-family:var(--mono);font-size:10px;color:var(--t3);white-space:nowrap}
+/* gantt */
+.gantt{background:var(--s1);border:1px solid var(--border);border-radius:var(--r8);overflow:hidden}
+.gantt-h{display:flex;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--t3)}
+.glc{width:130px;padding:5px 11px;border-right:1px solid var(--border);flex-shrink:0}
+.gtl{flex:1;display:flex}
+.gw{flex:1;text-align:center;padding:5px 3px;border-right:1px solid var(--bsub)}
+.grow{display:flex;border-bottom:1px solid var(--bsub);align-items:center}
+.grow:last-child{border-bottom:none}
+.gname{width:130px;padding:6px 11px;font-size:11px;color:var(--t2);border-right:1px solid var(--border);flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gbar-a{flex:1;position:relative;height:26px;display:flex;align-items:center}
+.gbar{height:12px;border-radius:var(--r4);position:absolute}
+/* terminal */
+.term{background:#0A0A0A;border:1px solid var(--border);border-radius:var(--r8);display:flex;flex-direction:column;overflow:hidden}
+.term-bar{padding:7px 11px;background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.tdots{display:flex;gap:5px}
+.tdot{width:10px;height:10px;border-radius:50%}
+.tttl{font-family:var(--mono);font-size:11px;color:var(--t2);margin:0 auto}
+.tbody{flex:1;padding:11px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--s3) transparent;font-family:var(--mono);font-size:11.5px}
+.tl{line-height:1.6}
+.tp{color:var(--acc)}.tout{color:#94A3B8}.tok{color:var(--ok)}.twarn{color:var(--warn)}.tclaude{color:var(--run)}.tdim{color:var(--t3)}.tcode{color:#E2E8F0}.terr{color:var(--err)}
+.tcursor{display:inline-block;width:7px;height:13px;background:var(--acc);margin-left:2px;animation:blink 1s step-start infinite;vertical-align:text-bottom}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+/* file tree */
+.ftree{display:flex;flex-direction:column;gap:1px;font-family:var(--mono);font-size:11px}
+.fn{display:flex;align-items:center;gap:5px;padding:3px 6px;border-radius:var(--r4);cursor:pointer;color:var(--t2)}
+.fn:hover{background:var(--s2);color:var(--t1)}
+.fn.on{background:var(--acc-d);color:var(--acc)}
+.fn.mod{color:var(--run)}
+.fn.add{color:var(--ok)}
+.fn.i1{padding-left:16px}
+.fn.i2{padding-left:28px}
+.ftag{margin-left:auto;font-size:9px}
+/* deploy item */
+.di{background:var(--s1);border:1px solid var(--border);border-radius:var(--r8);margin-bottom:7px;overflow:hidden}
+.di-h{display:flex;align-items:center;gap:9px;padding:9px 13px;cursor:pointer}
+.di-h:hover{background:rgba(255,255,255,.02)}
+.di-ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
+.di-t{font-size:12.5px;font-weight:500;color:var(--t1)}
+.di-sh{font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:2px}
+.di-m{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--t3);white-space:nowrap}
+.di-checks{display:flex;gap:5px}
+.chk{font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:var(--rF)}
+.di-b{padding:11px 13px;border-top:1px solid var(--bsub);background:var(--bg);font-family:var(--mono);font-size:11px}
+.diff-l{line-height:1.65}
+.da{color:var(--ok)}.dr{color:var(--err)}.dc{color:var(--t3)}
+/* lh */
+.lh{display:flex;flex-direction:column;align-items:center;gap:2px}
+.lhc{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;border:2px solid;font-variant-numeric:tabular-nums}
+.lhl{font-family:var(--mono);font-size:9px;color:var(--t3);text-align:center;line-height:1.2}
+/* kanban */
+.kanban{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin;scrollbar-color:var(--s3) transparent}
+.kc{min-width:190px;flex:1}
+.kh{display:flex;justify-content:space-between;margin-bottom:7px}
+.kn{font-size:12px;font-weight:600;color:var(--t2)}
+.kct{font-family:var(--mono);font-size:10px;color:var(--t3)}
+.tk{background:var(--s1);border:1px solid var(--border);border-radius:var(--r8);padding:9px;margin-bottom:5px;cursor:pointer;transition:border-color .1s}
+.tk:hover{border-color:var(--acc-b)}
+.tk-id{font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:3px}
+.tk-t{font-size:11.5px;color:var(--t1);margin-bottom:6px;line-height:1.4}
+.tk-f{display:flex;align-items:center;gap:5px}
+.tk-av{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:600}
+.pk{font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:var(--rF)}
+.ph{background:var(--err-d);color:var(--err)}
+.pm{background:var(--warn-d);color:var(--warn)}
+.pl{background:var(--s3);color:var(--t3)}
+/* marketing */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:16px}
+.kpi{background:var(--s1);border:1px solid var(--border);border-radius:var(--r12);padding:14px}
+.kpi-l{font-family:var(--mono);font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.kpi-v{font-size:30px;font-weight:700;font-family:var(--mono);color:var(--t1);line-height:1;font-variant-numeric:tabular-nums}
+.kpi-s{font-family:var(--mono);font-size:10px;margin-top:4px;color:var(--ok)}
+.agent-row{display:flex;gap:9px;margin-bottom:16px}
+.ag{background:var(--s1);border:1px solid var(--border);border-radius:var(--r8);padding:10px 12px;flex:1}
+.ag.run{border-color:var(--run-b)}
+.ag-h{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.ag-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.ag-n{font-size:12px;font-weight:600;color:var(--t1)}
+.ag-st{margin-left:auto;font-family:var(--mono);font-size:10px}
+.ag-task{font-family:var(--mono);font-size:10px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lead-r{display:flex;align-items:center;gap:10px;padding:7px 11px;border-radius:var(--r8);background:var(--s1);border:1px solid var(--border);margin-bottom:5px;cursor:pointer;transition:border-color .1s}
+.lead-r:hover{border-color:var(--acc-b)}
+.lead-n{font-size:12px;font-weight:500;color:var(--t1);width:150px;flex-shrink:0}
+.lead-c{font-size:11px;color:var(--t2);flex:1}
+.lead-score{font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:var(--rF)}
+.ls-h{background:var(--run-d);color:var(--run);border:1px solid var(--run-b)}
+.ls-w{background:var(--warn-d);color:var(--warn);border:1px solid var(--warn-b)}
+.ls-c{background:var(--s3);color:var(--t3);border:1px solid var(--border)}
+.lead-stage{font-family:var(--mono);font-size:10px;color:var(--t2);width:76px;text-align:center}
+.draft-p{font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:var(--rF)}
+.dp-pen{background:var(--warn-d);color:var(--warn)}
+.dp-ok{background:var(--ok-d);color:var(--ok)}
+.dp-sent{background:var(--acc-d);color:var(--acc)}
+/* chips */
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:3px 9px;border-radius:var(--rF);font-size:11px;font-family:var(--mono);background:var(--s2);color:var(--t2);border:1px solid var(--border);cursor:pointer;transition:all .1s}
+.chip:hover,.chip.on{background:var(--acc-d);color:var(--acc);border-color:var(--acc-b)}
+/* accordion group */
+.acc-g{}
+.acc-g-h{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;cursor:pointer;user-select:none;border-radius:var(--r4);margin-bottom:2px}
+.acc-g-h:hover{background:var(--s2)}
+.acc-g-lbl{font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase}
+.acc-g-ct{font-family:var(--mono);font-size:10px;color:var(--t3)}
+.acc-chev{font-size:9px;color:var(--t3);transition:transform .15s;display:inline-block}
+.acc-g.col .acc-chev{transform:rotate(-90deg)}
+.acc-g.col .acc-items{display:none}
+.acc-items{}
+/* skel */
+.skel{background:linear-gradient(90deg,var(--s2) 25%,var(--s3) 50%,var(--s2) 75%);background-size:200% 100%;animation:sh 1.4s infinite;border-radius:var(--r4)}
+@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="logo">Man<em>IA</em>cos</div>
+  <div class="ntabs">
+    <button class="ntab on"  onclick="sw('p1',this)">Dashboard — Cards <span class="nbadge">v5</span></button>
+    <button class="ntab" onclick="sw('p2',this)">Dashboard — Tabla</button>
+    <button class="ntab" onclick="sw('p3',this)">Cliente — Resumen</button>
+    <button class="ntab" onclick="sw('p4',this)">Cliente — Terminal</button>
+    <button class="ntab" onclick="sw('p5',this)">Cliente — Deploys</button>
+    <button class="ntab" onclick="sw('p6',this)">Marketing Interno</button>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════
+     P1 — DASHBOARD CARDS
+     ══════════════════════════════════════════ -->
+<div id="p1" class="panel on">
+<div class="plabel">Dashboard — Cards de proyecto · deploy / commit / issues / PRs / sprint</div>
+<div class="hub">
+  <aside class="sb">
+    <div class="sb-top">
+      <div class="org">
+        <div class="org-mark">M</div>
+        <div><div class="org-name">ManIAcos</div><div class="org-sub">3 socios · 8 proyectos</div></div>
+        <div class="org-chev">⌄</div>
+      </div>
+    </div>
+    <div class="sb-sec">
+      <div class="sb-sec-lbl">Hub</div>
+      <div class="si on">
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="8" y="1" width="5" height="5" rx="1.2" fill="currentColor" opacity=".45"/><rect x="1" y="8" width="5" height="5" rx="1.2" fill="currentColor" opacity=".45"/><rect x="8" y="8" width="5" height="5" rx="1.2" fill="currentColor" opacity=".45"/></svg>
+        Proyectos<span class="sibadge c">8</span></div>
+      <div class="si">
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 10l3.5-3.5 2.5 2.5 4-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Marketing<span class="sibadge r">4</span></div>
+      <div class="si">
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M11.5 1.5L2 5.5l3.5 1.5L7 10.5l4.5-9z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Deploys<span class="sibadge w">1</span></div>
+    </div>
+    <div class="cl-list">
+      <div class="cl-hdr" onclick="tog(this)">
+        <span class="cl-hdr-lbl">Clientes</span><span class="cl-hdr-chev">▾</span>
+      </div>
+      <div class="cl-items">
+        <div class="cl-pill on"><div class="cl-av" style="background:rgba(6,182,212,.15);color:var(--acc)">RC</div><span class="cl-name">RC Repuestos</span><div class="sdot ok"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(163,230,53,.12);color:var(--run)">PF</div><span class="cl-name">Panadería Fajardo</span><div class="sdot ok"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(239,68,68,.1);color:#F87171">GS</div><span class="cl-name">Grupo Seis</span><div class="sdot w"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(226,232,240,.06);color:#94A3B8">VT</div><span class="cl-name">Viajes Turín</span><div class="sdot off"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(245,158,11,.1);color:var(--warn)">MN</div><span class="cl-name">Materiales Norte</span><div class="sdot ok"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(6,182,212,.08);color:var(--acc)">AL</div><span class="cl-name">Almacén López</span><div class="sdot ok"></div></div>
+      </div>
+    </div>
+    <div class="sb-team">
+      <div class="tav" style="background:rgba(6,182,212,.18);color:var(--acc)">FR<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(163,230,53,.18);color:var(--run)">LU<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(160,160,180,.12);color:#94A3B8">NO</div>
+      <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--t3)">v0.12.4</span>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="tbar">
+      <span class="tbar-t">Proyectos</span><span class="tbar-sep">/</span><span class="tbar-s">8 activos</span>
+      <div class="acts">
+        <div class="chips"><div class="chip on">Todos</div><div class="chip">CI failing</div><div class="chip">PRs pendientes</div></div>
+        <button class="btn btn-p btn-sm">+ Nuevo proyecto</button>
+      </div>
+    </div>
+    <div class="scr">
+      <!-- metric strip -->
+      <div class="mstrip">
+        <div class="mc"><div class="mc-l">Proyectos</div><div class="mc-v">8</div><div class="mc-s" style="color:var(--ok)">▲ +1 este mes</div></div>
+        <div class="mc"><div class="mc-l">Commits hoy</div><div class="mc-v" style="color:var(--acc)">24</div><div class="mc-s">en 6 repos</div></div>
+        <div class="mc"><div class="mc-l">Issues abiertas</div><div class="mc-v" style="color:var(--warn)">41</div><div class="mc-s">7 high priority</div></div>
+        <div class="mc"><div class="mc-l">PRs en review</div><div class="mc-v">5</div><div class="mc-s">3 sin revisar +48h</div></div>
+        <div class="mc"><div class="mc-l">Claude dev</div><div class="mc-v" style="font-size:15px">1.4M</div><div class="mc-s">$8.40 esta semana</div></div>
+      </div>
+      <!-- cards grid -->
+      <div class="shdr"><span class="st">Proyectos<span class="sc">· métricas del repo</span></span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:11px">
+
+        <!-- RC Repuestos -->
+        <div class="pcard" style="border-color:var(--acc-b)">
+          <div class="pcard-head">
+            <div class="pcard-av" style="background:rgba(6,182,212,.13);color:var(--acc)">RC</div>
+            <div>
+              <div class="pcard-n">RC Repuestos</div>
+              <div class="pcard-t">Portal B2B · Next.js 15 + Supabase</div>
+            </div>
+            <span class="sp sp-ok" style="margin-left:auto">✓ prod</span>
+          </div>
+          <div class="pcard-rows">
+            <div class="pcard-row"><span class="pcard-rl">Commit</span><span class="pcard-rv hi">feat: OAuth2 · Franco · 40min</span></div>
+            <div class="pcard-row"><span class="pcard-rl">Issues</span><span class="pcard-rv">8 abiertas · <span style="color:var(--err)">3 high</span> · 4 med</span></div>
+            <div class="pcard-row"><span class="pcard-rl">PRs</span><span class="pcard-rv"><span class="sp sp-w">1 en review</span></span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">S3 · 12/18</span>
+            <div class="pbar" style="flex:1"><div class="pbar-f" style="width:67%;background:var(--acc)"></div></div>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--acc)">67%</span>
+          </div>
+        </div>
+
+        <!-- Panadería Fajardo -->
+        <div class="pcard">
+          <div class="pcard-head">
+            <div class="pcard-av" style="background:rgba(163,230,53,.1);color:var(--run)">PF</div>
+            <div><div class="pcard-n">Panadería Fajardo</div><div class="pcard-t">E-commerce · Shopify + App</div></div>
+            <span class="sp sp-ok" style="margin-left:auto">✓ prod</span>
+          </div>
+          <div class="pcard-rows">
+            <div class="pcard-row"><span class="pcard-rl">Commit</span><span class="pcard-rv hi">fix: carrito mobile · Lucho · 2h</span></div>
+            <div class="pcard-row"><span class="pcard-rl">Issues</span><span class="pcard-rv">3 abiertas · 1 med · 2 low</span></div>
+            <div class="pcard-row"><span class="pcard-rl">PRs</span><span class="pcard-rv" style="color:var(--t3)">ninguna</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">S5 · 16/16</span>
+            <div class="pbar" style="flex:1"><div class="pbar-f" style="width:100%;background:var(--ok)"></div></div>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--ok)">100%</span>
+          </div>
+        </div>
+
+        <!-- Grupo Seis — CI failing -->
+        <div class="pcard" style="border-color:var(--warn-b)">
+          <div class="pcard-head">
+            <div class="pcard-av" style="background:rgba(239,68,68,.1);color:#F87171">GS</div>
+            <div><div class="pcard-n">Grupo Seis</div><div class="pcard-t">CRM interno · React + FastAPI</div></div>
+            <span class="sp sp-w" style="margin-left:auto">⚠ CI fail</span>
+          </div>
+          <div class="pcard-rows">
+            <div class="pcard-row"><span class="pcard-rl">Commit</span><span class="pcard-rv hi">feat: módulo presupuestos · Franco · 3h</span></div>
+            <div class="pcard-row"><span class="pcard-rl">Issues</span><span class="pcard-rv">12 abiertas · <span style="color:var(--err)">5 high</span></span></div>
+            <div class="pcard-row"><span class="pcard-rl">PRs</span><span class="pcard-rv"><span class="sp sp-w">2 en review</span></span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">S2 · 6/14</span>
+            <div class="pbar" style="flex:1"><div class="pbar-f" style="width:43%;background:var(--warn)"></div></div>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--warn)">43%</span>
+          </div>
+        </div>
+
+        <!-- Viajes Turín — pausado -->
+        <div class="pcard" style="opacity:.65">
+          <div class="pcard-head">
+            <div class="pcard-av" style="background:rgba(226,232,240,.06);color:#94A3B8">VT</div>
+            <div><div class="pcard-n">Viajes Turín</div><div class="pcard-t">Portal reservas · Vue + Node</div></div>
+            <span class="sp sp-off" style="margin-left:auto">⏸ paused</span>
+          </div>
+          <div class="pcard-rows">
+            <div class="pcard-row"><span class="pcard-rl">Commit</span><span class="pcard-rv">refactor: cleanup · Noe · 4 días</span></div>
+            <div class="pcard-row"><span class="pcard-rl">Issues</span><span class="pcard-rv">5 abiertas · sin actividad</span></div>
+            <div class="pcard-row"><span class="pcard-rl">PRs</span><span class="pcard-rv" style="color:var(--t3)">ninguna</span></div>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">S4 · en pausa</div>
+        </div>
+
+        <!-- Materiales Norte -->
+        <div class="pcard">
+          <div class="pcard-head">
+            <div class="pcard-av" style="background:rgba(245,158,11,.1);color:var(--warn)">MN</div>
+            <div><div class="pcard-n">Materiales Norte</div><div class="pcard-t">App pedidos · React Native</div></div>
+            <span class="sp sp-c" style="margin-left:auto">↑ deploy</span>
+          </div>
+          <div class="pcard-rows">
+            <div class="pcard-row"><span class="pcard-rl">Commit</span><span class="pcard-rv hi">feat: push notifs · Lucho · 5h</span></div>
+            <div class="pcard-row"><span class="pcard-rl">Issues</span><span class="pcard-rv">6 abiertas · 2 med · 4 low</span></div>
+            <div class="pcard-row"><span class="pcard-rl">PRs</span><span class="pcard-rv"><span class="sp sp-c">1 en review</span></span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">S1 · 8/12</span>
+            <div class="pbar" style="flex:1"><div class="pbar-f" style="width:66%;background:var(--acc)"></div></div>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--acc)">66%</span>
+          </div>
+        </div>
+
+        <!-- Almacén López — Claude coding -->
+        <div class="pcard" style="border-color:var(--run-b)">
+          <div class="pcard-head">
+            <div class="pcard-av" style="background:rgba(6,182,212,.08);color:var(--acc)">AL</div>
+            <div><div class="pcard-n">Almacén López</div><div class="pcard-t">Dashboard admin · Next.js</div></div>
+            <span class="sp sp-r" style="margin-left:auto">● coding</span>
+          </div>
+          <div class="pcard-rows">
+            <div class="pcard-row"><span class="pcard-rl">Commit</span><span class="pcard-rv hi">feat: tabla inventario · Claude · 8min</span></div>
+            <div class="pcard-row"><span class="pcard-rl">Issues</span><span class="pcard-rv">4 abiertas · 1 high · 3 low</span></div>
+            <div class="pcard-row"><span class="pcard-rl">PRs</span><span class="pcard-rv" style="color:var(--t3)">ninguna</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">S1 · 5/10</span>
+            <div class="pbar" style="flex:1"><div class="pbar-f" style="width:50%;background:var(--run)"></div></div>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--run)">50%</span>
+          </div>
+        </div>
+
+        <!-- skeleton -->
+        <div class="pcard" style="opacity:.4">
+          <div style="display:flex;gap:9px;margin-bottom:11px">
+            <div class="skel" style="width:34px;height:34px;border-radius:var(--r8)"></div>
+            <div style="flex:1"><div class="skel" style="height:11px;width:65%;margin-bottom:5px"></div><div class="skel" style="height:10px;width:45%"></div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
+            <div class="skel" style="height:10px;width:90%"></div>
+            <div class="skel" style="height:10px;width:75%"></div>
+            <div class="skel" style="height:10px;width:60%"></div>
+          </div>
+          <div class="skel" style="height:3px"></div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     P2 — DASHBOARD TABLA
+     ══════════════════════════════════════════ -->
+<div id="p2" class="panel">
+<div class="plabel">Dashboard — Tabla · columnas técnicas · números no barras</div>
+<div class="hub">
+  <aside class="sb">
+    <div class="sb-top"><div class="org"><div class="org-mark">M</div><div><div class="org-name">ManIAcos</div><div class="org-sub">3 socios · 8 proyectos</div></div></div></div>
+    <div class="sb-sec">
+      <div class="sb-sec-lbl">Hub</div>
+      <div class="si on"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="8" y="1" width="5" height="5" rx="1.2" fill="currentColor" opacity=".45"/><rect x="1" y="8" width="5" height="5" rx="1.2" fill="currentColor" opacity=".45"/><rect x="8" y="8" width="5" height="5" rx="1.2" fill="currentColor" opacity=".45"/></svg>Proyectos<span class="sibadge c">8</span></div>
+      <div class="si"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 10l3.5-3.5 2.5 2.5 4-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Marketing<span class="sibadge r">4</span></div>
+    </div>
+    <div class="cl-list">
+      <div class="cl-hdr" onclick="tog(this)"><span class="cl-hdr-lbl">Clientes</span><span class="cl-hdr-chev">▾</span></div>
+      <div class="cl-items">
+        <div class="cl-pill on"><div class="cl-av" style="background:rgba(6,182,212,.15);color:var(--acc)">RC</div><span class="cl-name">RC Repuestos</span><div class="sdot ok"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(163,230,53,.12);color:var(--run)">PF</div><span class="cl-name">Panadería Fajardo</span><div class="sdot ok"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(239,68,68,.1);color:#F87171">GS</div><span class="cl-name">Grupo Seis</span><div class="sdot w"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(226,232,240,.06);color:#94A3B8">VT</div><span class="cl-name">Viajes Turín</span><div class="sdot off"></div></div>
+      </div>
+    </div>
+    <div class="sb-team">
+      <div class="tav" style="background:rgba(6,182,212,.18);color:var(--acc)">FR<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(163,230,53,.18);color:var(--run)">LU<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(160,160,180,.12);color:#94A3B8">NO</div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="tbar">
+      <span class="tbar-t">Proyectos</span><span class="tbar-sep">/</span><span class="tbar-s">vista tabla</span>
+      <div class="acts">
+        <div class="chips"><div class="chip on">Todos</div><div class="chip">CI failing</div><div class="chip">Sin actividad</div></div>
+        <button class="btn btn-p btn-sm">+ Nuevo proyecto</button>
+      </div>
+    </div>
+    <div class="scr">
+      <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r8);overflow:hidden">
+        <table class="dtbl">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Stack</th>
+              <th>CI</th>
+              <th>Sprint</th>
+              <th>Último commit</th>
+              <th>Commits 7d</th>
+              <th>Deploys 7d</th>
+              <th>Issues</th>
+              <th>PRs</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div style="display:flex;align-items:center;gap:8px"><div class="cl-av" style="background:rgba(6,182,212,.15);color:var(--acc)">RC</div><span class="tdn">RC Repuestos</span></div></td>
+              <td class="tdm" style="color:var(--t3)">Next.js · Supa</td>
+              <td><span class="sp sp-ok">✓ ok</span></td>
+              <td class="tdm">S3 · <span style="color:var(--acc)">67%</span></td>
+              <td class="tdm">feat: OAuth2 · FR · 40min</td>
+              <td class="tdm" style="color:var(--t1)">18</td>
+              <td class="tdm" style="color:var(--t1)">5</td>
+              <td class="tdm"><span style="color:var(--err)">3H</span> / 4M / 1L</td>
+              <td><span class="sp sp-w">1</span></td>
+            </tr>
+            <tr>
+              <td><div style="display:flex;align-items:center;gap:8px"><div class="cl-av" style="background:rgba(163,230,53,.12);color:var(--run)">PF</div><span class="tdn">Panadería Fajardo</span></div></td>
+              <td class="tdm" style="color:var(--t3)">Shopify · App</td>
+              <td><span class="sp sp-ok">✓ ok</span></td>
+              <td class="tdm">S5 · <span style="color:var(--ok)">100%</span></td>
+              <td class="tdm">fix: carrito · LU · 2h</td>
+              <td class="tdm" style="color:var(--t1)">9</td>
+              <td class="tdm" style="color:var(--t1)">3</td>
+              <td class="tdm">0H / 1M / 2L</td>
+              <td class="tdm" style="color:var(--t3)">—</td>
+            </tr>
+            <tr style="background:rgba(245,158,11,.03)">
+              <td><div style="display:flex;align-items:center;gap:8px"><div class="cl-av" style="background:rgba(239,68,68,.1);color:#F87171">GS</div><span class="tdn">Grupo Seis</span></div></td>
+              <td class="tdm" style="color:var(--t3)">React · FastAPI</td>
+              <td><span class="sp sp-w">⚠ fail</span></td>
+              <td class="tdm">S2 · <span style="color:var(--warn)">43%</span></td>
+              <td class="tdm">feat: presupuestos · FR · 3h</td>
+              <td class="tdm" style="color:var(--t1)">12</td>
+              <td class="tdm" style="color:var(--warn)">0 ⚠</td>
+              <td class="tdm"><span style="color:var(--err)">5H</span> / 5M / 2L</td>
+              <td><span class="sp sp-w">2</span></td>
+            </tr>
+            <tr style="opacity:.65">
+              <td><div style="display:flex;align-items:center;gap:8px"><div class="cl-av" style="background:rgba(226,232,240,.06);color:#94A3B8">VT</div><span class="tdn">Viajes Turín</span></div></td>
+              <td class="tdm" style="color:var(--t3)">Vue · Node</td>
+              <td><span class="sp sp-off">⏸</span></td>
+              <td class="tdm" style="color:var(--t3)">S4 · pausa</td>
+              <td class="tdm">refactor · NO · 4d</td>
+              <td class="tdm" style="color:var(--t3)">0</td>
+              <td class="tdm" style="color:var(--t3)">0</td>
+              <td class="tdm" style="color:var(--t3)">5 sin actividad</td>
+              <td class="tdm" style="color:var(--t3)">—</td>
+            </tr>
+            <tr>
+              <td><div style="display:flex;align-items:center;gap:8px"><div class="cl-av" style="background:rgba(245,158,11,.1);color:var(--warn)">MN</div><span class="tdn">Materiales Norte</span></div></td>
+              <td class="tdm" style="color:var(--t3)">React Native</td>
+              <td><span class="sp sp-c">↑ deploy</span></td>
+              <td class="tdm">S1 · <span style="color:var(--acc)">66%</span></td>
+              <td class="tdm">feat: push notifs · LU · 5h</td>
+              <td class="tdm" style="color:var(--t1)">7</td>
+              <td class="tdm" style="color:var(--t1)">2</td>
+              <td class="tdm">0H / 2M / 4L</td>
+              <td><span class="sp sp-c">1</span></td>
+            </tr>
+            <tr>
+              <td><div style="display:flex;align-items:center;gap:8px"><div class="cl-av" style="background:rgba(6,182,212,.08);color:var(--acc)">AL</div><span class="tdn">Almacén López</span><span class="sp sp-r" style="font-size:9px;padding:1px 5px;margin-left:4px">● coding</span></div></td>
+              <td class="tdm" style="color:var(--t3)">Next.js</td>
+              <td><span class="sp sp-ok">✓ ok</span></td>
+              <td class="tdm">S1 · <span style="color:var(--run)">50%</span></td>
+              <td class="tdm">feat: inventario · Claude · 8min</td>
+              <td class="tdm" style="color:var(--t1)">11</td>
+              <td class="tdm" style="color:var(--t1)">4</td>
+              <td class="tdm"><span style="color:var(--err)">1H</span> / 0M / 3L</td>
+              <td class="tdm" style="color:var(--t3)">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     P3 — CLIENTE RESUMEN
+     ══════════════════════════════════════════ -->
+<div id="p3" class="panel">
+<div class="plabel">Vista cliente — Resumen del proyecto · solo dominio A · tabs correctos</div>
+<div class="hub">
+  <aside class="sb">
+    <div class="sb-top"><div class="org"><div class="org-mark">M</div><div><div class="org-name">ManIAcos</div><div class="org-sub">3 socios · 8 proyectos</div></div></div></div>
+    <div class="cl-list" style="padding-top:8px">
+      <div class="cl-hdr" onclick="tog(this)"><span class="cl-hdr-lbl">Clientes</span><span class="cl-hdr-chev">▾</span></div>
+      <div class="cl-items">
+        <div class="cl-pill on"><div class="cl-av" style="background:rgba(6,182,212,.15);color:var(--acc)">RC</div><span class="cl-name">RC Repuestos</span><div class="sdot ok"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(163,230,53,.12);color:var(--run)">PF</div><span class="cl-name">Panadería Fajardo</span><div class="sdot ok"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(239,68,68,.1);color:#F87171">GS</div><span class="cl-name">Grupo Seis</span><div class="sdot w"></div></div>
+      </div>
+    </div>
+    <div class="sb-team">
+      <div class="tav" style="background:rgba(6,182,212,.18);color:var(--acc)">FR<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(163,230,53,.18);color:var(--run)">LU<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(160,160,180,.12);color:#94A3B8">NO</div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="ch">
+      <div class="ch-av" style="background:rgba(6,182,212,.13);color:var(--acc)">RC</div>
+      <div style="flex:1">
+        <div class="ch-n">RC Repuestos</div>
+        <div class="ch-s">Portal B2B venta repuestos · Next.js 15 · Supabase · Vercel</div>
+      </div>
+      <div class="acts">
+        <span class="sp sp-r">● Claude coding</span>
+        <button class="btn btn-s btn-sm">Ver repo</button>
+        <button class="btn btn-p btn-sm">+ Nueva tarea</button>
+      </div>
+    </div>
+    <div class="tbbar">
+      <div class="tbi on">Resumen</div><div class="tbi">Tareas</div><div class="tbi">Roadmap</div><div class="tbi">Docs</div><div class="tbi">Archivos</div><div class="tbi">Terminal</div><div class="tbi">Deploys</div><div class="tbi">Settings</div>
+    </div>
+    <div class="scr">
+      <!-- 4 top cards -->
+      <div class="grid4" style="margin-bottom:13px">
+        <div class="card" style="border-color:var(--ok-b)">
+          <div class="cl-lbl">Último deploy</div>
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><span class="sp sp-ok">✓ prod</span><span style="font-family:var(--mono);font-size:10px;color:var(--t3)">hace 1h</span></div>
+          <div style="font-size:13px;font-weight:600;color:var(--t1);margin-bottom:3px">v1.4.3</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-bottom:8px">feat: OAuth2 distribuidores</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:var(--rF);background:var(--ok-d);color:var(--ok)">✓ build</span>
+            <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:var(--rF);background:var(--ok-d);color:var(--ok)">✓ 34 tests</span>
+            <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:var(--rF);background:var(--ok-d);color:var(--ok)">✓ lint</span>
+          </div>
+          <div style="margin-top:7px"><a href="#" style="font-family:var(--mono);font-size:10px">↗ rc-repuestos-1a2b.vercel.app</a></div>
+        </div>
+        <div class="card">
+          <div class="cl-lbl">Último commit</div>
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+            <div class="tav" style="background:rgba(6,182,212,.18);color:var(--acc);width:20px;height:20px;font-size:8px">FR</div>
+            <span style="font-size:12px;font-weight:500;color:var(--t1)">Franco S.</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">40min</span>
+          </div>
+          <div style="font-size:12px;color:var(--t1);margin-bottom:5px;line-height:1.4">feat: OAuth2 flow distribuidores</div>
+          <div style="font-family:var(--mono);font-size:10px;background:var(--bg);padding:5px 7px;border-radius:var(--r4);border:1px solid var(--border)">
+            <span style="color:var(--ok)">+47</span> <span style="color:var(--err)">−12</span> <span style="color:var(--t3);margin-left:5px">oauth.ts · Login…tsx</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:5px">T037 · feature/oauth-dist</div>
+        </div>
+        <div class="card">
+          <div class="cl-lbl">Issues abiertas</div>
+          <div style="font-size:26px;font-weight:700;font-family:var(--mono);color:var(--t1);margin-bottom:7px;font-variant-numeric:tabular-nums">8</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px"><span style="color:var(--t2)">High</span><span style="color:var(--err)">3</span></div>
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px"><span style="color:var(--t2)">Medium</span><span style="color:var(--warn)">4</span></div>
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px"><span style="color:var(--t2)">Low</span><span style="color:var(--t3)">1</span></div>
+            <div style="border-top:1px solid var(--bsub);padding-top:4px;display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px"><span style="color:var(--t2)">PR en review</span><span class="sp sp-w" style="font-size:10px">1</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="cl-lbl">Sprint 3 · activo</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+            <span style="font-size:26px;font-weight:700;font-family:var(--mono);color:var(--t1);font-variant-numeric:tabular-nums">67%</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--warn)">5d restantes</span>
+          </div>
+          <div class="pbar" style="margin-bottom:8px"><div class="pbar-f" style="width:67%;background:var(--acc)"></div></div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px"><span style="color:var(--t2)">Completadas</span><span style="color:var(--ok)">12 / 18</span></div>
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px"><span style="color:var(--t2)">En progreso</span><span style="color:var(--run)">3</span></div>
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px"><span style="color:var(--t2)">Bloqueadas</span><span style="color:var(--err)">1</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- two col: gantt + activity -->
+      <div class="grid2" style="margin-bottom:13px">
+        <div>
+          <div class="shdr"><span class="st">Sprint 3</span><button class="btn btn-s btn-sm">Ver roadmap</button></div>
+          <div class="gantt">
+            <div class="gantt-h"><div class="glc">Tarea</div><div class="gtl"><div class="gw">Sem 1</div><div class="gw">Sem 2</div><div class="gw">Sem 3</div><div class="gw">Sem 4</div></div></div>
+            <div class="grow"><div class="gname" style="color:var(--ok)">✓ Auth base</div><div class="gbar-a"><div class="gbar" style="left:0;width:50%;background:var(--ok-d);border:1px solid var(--ok-b)"></div></div></div>
+            <div class="grow"><div class="gname" style="color:var(--ok)">✓ Catálogo</div><div class="gbar-a"><div class="gbar" style="left:25%;width:50%;background:var(--ok-d);border:1px solid var(--ok-b)"></div></div></div>
+            <div class="grow"><div class="gname" style="color:var(--acc)">→ OAuth2</div><div class="gbar-a"><div class="gbar" style="left:50%;width:35%;background:var(--acc-d);border:1px solid var(--acc-b)"></div></div></div>
+            <div class="grow"><div class="gname">Carrito B2B</div><div class="gbar-a"><div class="gbar" style="left:62%;width:38%;background:var(--s3);border:1px solid var(--border)"></div></div></div>
+            <div class="grow"><div class="gname">Checkout</div><div class="gbar-a"><div class="gbar" style="left:75%;width:25%;background:var(--s3);border:1px solid var(--border)"></div></div></div>
+          </div>
+        </div>
+        <div>
+          <div class="shdr"><span class="st">Actividad<span class="sc">esta semana</span></span></div>
+          <div class="card-s">
+            <div class="actrow"><div class="actav" style="background:rgba(6,182,212,.18);color:var(--acc)">FR</div><div class="acttxt"><strong>Franco</strong> pusheó <strong>feat: OAuth2</strong> · T037</div><div class="acttm">40min</div></div>
+            <div class="actrow"><div class="actav" style="background:rgba(163,230,53,.18);color:var(--run)">CL</div><div class="acttxt"><strong>Claude</strong> implementó <strong>LoginDistributor.tsx</strong> · 3 archivos</div><div class="acttm">45min</div></div>
+            <div class="actrow"><div class="actav" style="background:rgba(163,230,53,.18);color:var(--run)">LU</div><div class="acttxt"><strong>Lucho</strong> cerró T034 — <strong>filtro por marca</strong></div><div class="acttm">3h</div></div>
+            <div class="actrow"><div class="actav" style="background:rgba(6,182,212,.18);color:var(--acc)">FR</div><div class="acttxt"><strong>Franco</strong> abrió T041 — <strong>bug: precio bulk orders</strong> · High</div><div class="acttm">5h</div></div>
+            <div class="actrow"><div class="actav" style="background:rgba(160,160,180,.12);color:#94A3B8">NO</div><div class="acttxt"><strong>Noe</strong> aprobó PR #14 — <strong>catálogo v2</strong></div><div class="acttm">ayer</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- tech metrics -->
+      <div class="shdr"><span class="st">Métricas técnicas</span></div>
+      <div class="mstrip">
+        <div class="mc"><div class="mc-l">Cobertura</div><div class="mc-v" style="color:var(--ok)">84%</div><div class="mc-s" style="color:var(--ok)">▲ +3% semana</div></div>
+        <div class="mc"><div class="mc-l">Build time</div><div class="mc-v">1:48</div><div class="mc-s">últimos 10</div></div>
+        <div class="mc"><div class="mc-l">Bundle</div><div class="mc-v">287kb</div><div class="mc-s" style="color:var(--ok)">▼ -12kb</div></div>
+        <div class="mc"><div class="mc-l">LH Perf</div><div class="mc-v" style="color:var(--ok)">94</div><div class="mc-s">último deploy</div></div>
+        <div class="mc"><div class="mc-l">Tests</div><div class="mc-v">34</div><div class="mc-s">todos pasando</div></div>
+        <div class="mc"><div class="mc-l">Claude dev</div><div class="mc-v" style="font-size:14px">84k tok</div><div class="mc-s">$4.20 proyecto</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     P4 — CLIENTE TERMINAL
+     ══════════════════════════════════════════ -->
+<div id="p4" class="panel">
+<div class="plabel">Vista cliente — Terminal · Claude codeando T037 OAuth2 · file tree compacto · status bar</div>
+<div class="hub">
+  <aside class="sb">
+    <div class="sb-top"><div class="org"><div class="org-mark">M</div><div><div class="org-name">ManIAcos</div></div></div></div>
+    <div class="cl-list" style="padding-top:8px">
+      <div class="cl-hdr" onclick="tog(this)"><span class="cl-hdr-lbl">Clientes</span><span class="cl-hdr-chev">▾</span></div>
+      <div class="cl-items">
+        <div class="cl-pill on"><div class="cl-av" style="background:rgba(6,182,212,.15);color:var(--acc)">RC</div><span class="cl-name">RC Repuestos</span><div class="sdot r"></div></div>
+        <div class="cl-pill"><div class="cl-av" style="background:rgba(163,230,53,.12);color:var(--run)">PF</div><span class="cl-name">Panadería Fajardo</span><div class="sdot ok"></div></div>
+      </div>
+    </div>
+    <div class="sb-team">
+      <div class="tav" style="background:rgba(6,182,212,.18);color:var(--acc)">FR<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(163,230,53,.18);color:var(--run)">LU<span class="tdot"></span></div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="ch">
+      <div class="ch-av" style="background:rgba(6,182,212,.13);color:var(--acc)">RC</div>
+      <div style="flex:1">
+        <div class="ch-n">RC Repuestos</div>
+        <div class="ch-s">branch: <span style="color:var(--acc);font-family:var(--mono);font-size:11px">feature/T037-oauth-distributor</span></div>
+      </div>
+      <div class="acts"><button class="btn btn-s btn-sm">Ver T037</button><button class="btn btn-p btn-sm">↑ Push</button></div>
+    </div>
+    <div class="tbbar">
+      <div class="tbi">Resumen</div><div class="tbi">Tareas</div><div class="tbi">Archivos</div><div class="tbi on">Terminal</div><div class="tbi">Deploys</div>
+    </div>
+    <!-- body = file tree + terminal, no scroll wrapper -->
+    <div style="flex:1;display:flex;overflow:hidden">
+      <!-- file tree compact -->
+      <div style="width:168px;min-width:168px;border-right:1px solid var(--border);background:var(--s1);display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:8px 8px 4px;border-bottom:1px solid var(--bsub)">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;padding:0 4px;margin-bottom:4px">Archivos editados</div>
+          <div class="ftree">
+            <div class="fn" style="color:var(--t3)">src/</div>
+            <div class="fn i1" style="color:var(--t3)">auth/</div>
+            <div class="fn i2 mod">oauth.ts<span class="ftag" style="color:var(--run)">M</span></div>
+            <div class="fn i2 mod">session.ts<span class="ftag" style="color:var(--run)">M</span></div>
+            <div class="fn i1" style="color:var(--t3)">components/auth/</div>
+            <div class="fn i2 on">LoginDistributor.tsx</div>
+            <div class="fn i2 add">OAuthCallback.tsx<span class="ftag" style="color:var(--ok)">A</span></div>
+            <div class="fn i1" style="color:var(--t3)">lib/</div>
+            <div class="fn i2 mod">supabase.ts<span class="ftag" style="color:var(--run)">M</span></div>
+          </div>
+        </div>
+        <div style="padding:8px;flex:1">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Estado</div>
+          <div style="display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-size:10px">
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">branch</span></div>
+            <div style="color:var(--acc);font-size:10px">T037-oauth-dist…</div>
+            <div style="display:flex;justify-content:space-between;margin-top:3px"><span style="color:var(--ok)">+170</span><span style="color:var(--err)">−12</span></div>
+            <div style="color:var(--t3)">4 archivos staged</div>
+            <div style="margin-top:5px;display:flex;align-items:center;gap:4px"><div style="width:6px;height:6px;border-radius:50%;background:var(--run)"></div><span style="color:var(--t2)">tests corriendo</span></div>
+            <div style="color:var(--t3)">auth.test.ts</div>
+          </div>
+        </div>
+      </div>
+      <!-- terminal centered and large -->
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+        <div class="term" style="flex:1;border:none;border-radius:0">
+          <div class="term-bar" style="border-top:none;border-left:none;border-right:none">
+            <div class="tdots"><div class="tdot" style="background:#EF4444"></div><div class="tdot" style="background:#F59E0B"></div><div class="tdot" style="background:#22C55E"></div></div>
+            <span class="tttl">rc-repuestos · bash · feature/T037-oauth-distributor</span>
+            <span class="sp sp-r" style="margin-left:auto;font-size:10px">● Claude activo</span>
+          </div>
+          <div class="tbody">
+            <div class="tl tdim">rc-repuestos · claude code · sonnet-4.6</div>
+            <div class="tl tdim">────────────────────────────────────────────────────────</div>
+            <div class="tl tp">$ claude "Implementar T037: OAuth2 login para distribuidores"</div>
+            <div class="tl tclaude">● Claude: Voy a revisar el contexto del proyecto primero...</div>
+            <div class="tl tout">  Reading src/auth/session.ts</div>
+            <div class="tl tout">  Reading src/lib/supabase.ts</div>
+            <div class="tl tout">  Reading app/api/auth/[...nextauth]/route.ts</div>
+            <div class="tl tclaude">● Claude: Entendido. El proyecto usa NextAuth + Supabase. Necesito</div>
+            <div class="tl tclaude">  agregar un OAuth2 provider para el sistema de distribuidores.</div>
+            <div class="tl tclaude">  Plan: oauth.ts helper → LoginDistributor.tsx → OAuthCallback.tsx</div>
+            <br>
+            <div class="tl tp">  Writing src/auth/oauth.ts...</div>
+            <div class="tl tcode">  <span style="color:var(--acc)">export async function</span> getDistributorAuthURL<span style="color:var(--t2)">(</span></div>
+            <div class="tl tcode">    redirectUri<span style="color:var(--t2)">: string</span></div>
+            <div class="tl tcode">  <span style="color:var(--t2)">): Promise&lt;string&gt; {</span></div>
+            <div class="tl tcode">    <span style="color:var(--acc)">const</span> params = <span style="color:var(--acc)">new</span> URLSearchParams({</div>
+            <div class="tl tcode">      client_id<span style="color:var(--t2)">: process.env.RC_OAUTH_CLIENT_ID!,</span></div>
+            <div class="tl tcode">      scope<span style="color:var(--t2)">: </span><span style="color:var(--ok)">'read:catalog write:orders'</span></div>
+            <div class="tl tcode">    })</div>
+            <div class="tl tok">  ✓ oauth.ts escrito · 47 líneas</div>
+            <br>
+            <div class="tl tp">  Writing src/components/auth/LoginDistributor.tsx...</div>
+            <div class="tl tok">  ✓ LoginDistributor.tsx · 89 líneas · 1 componente</div>
+            <div class="tl tp">  Writing src/components/auth/OAuthCallback.tsx...</div>
+            <div class="tl tok">  ✓ OAuthCallback.tsx · 34 líneas</div>
+            <div class="tl tp">  Updating src/lib/supabase.ts...</div>
+            <div class="tl tok">  ✓ supabase.ts · +createDistributorSession</div>
+            <br>
+            <div class="tl tclaude">● Claude: Código escrito. Corriendo tests...</div>
+            <div class="tl tp">$ pnpm test src/auth/oauth.test.ts</div>
+            <div class="tl tout">  PASS src/auth/oauth.test.ts</div>
+            <div class="tl tok">  ✓ getDistributorAuthURL · 12ms</div>
+            <div class="tl tok">  ✓ validateOAuthCallback handles error · 8ms</div>
+            <div class="tl tok">  ✓ createDistributorSession persists · 24ms</div>
+            <div class="tl twarn">  ⚠ RC_OAUTH_SECRET missing from .env.local</div>
+            <div class="tl tclaude">● Claude: Tests pasan. Falta agregar RC_OAUTH_SECRET al .env.local</div>
+            <div class="tl tclaude">  y Vercel env vars. ¿Lo hacemos ahora?</div>
+            <div class="tl" style="color:var(--acc)"><span class="tcursor"></span></div>
+          </div>
+        </div>
+        <!-- status bar -->
+        <div style="height:24px;background:var(--s1);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 11px;gap:12px;flex-shrink:0">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--run)">● Claude activo</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">sonnet-4.6</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">84,230 tokens</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">T037-oauth-distributor</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-left:auto">4 archivos · +170 −12 staged</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     P5 — CLIENTE DEPLOYS (sidebar accordion)
+     ══════════════════════════════════════════ -->
+<div id="p5" class="panel">
+<div class="plabel">Vista cliente — Deploys · sidebar accordion plegable por estado</div>
+<div class="hub">
+  <aside class="sb">
+    <div class="sb-top"><div class="org"><div class="org-mark">M</div><div><div class="org-name">ManIAcos</div><div class="org-sub">8 proyectos</div></div></div></div>
+    <div class="cl-list" style="padding-top:8px">
+      <!-- accordion: activos -->
+      <div class="acc-g">
+        <div class="acc-g-h" onclick="togAcc(this.parentElement)">
+          <span class="acc-g-lbl">Activos</span>
+          <span style="display:flex;align-items:center;gap:5px"><span class="acc-g-ct">5</span><span class="acc-chev">▾</span></span>
+        </div>
+        <div class="acc-items">
+          <div class="cl-pill on"><div class="cl-av" style="background:rgba(6,182,212,.15);color:var(--acc)">RC</div><span class="cl-name">RC Repuestos</span><div class="sdot ok"></div></div>
+          <div class="cl-pill"><div class="cl-av" style="background:rgba(163,230,53,.12);color:var(--run)">PF</div><span class="cl-name">Panadería Fajardo</span><div class="sdot ok"></div></div>
+          <div class="cl-pill"><div class="cl-av" style="background:rgba(245,158,11,.1);color:var(--warn)">MN</div><span class="cl-name">Materiales Norte</span><div class="sdot ok"></div></div>
+          <div class="cl-pill"><div class="cl-av" style="background:rgba(6,182,212,.08);color:var(--acc)">AL</div><span class="cl-name">Almacén López</span><div class="sdot ok"></div></div>
+          <div class="cl-pill"><div class="cl-av" style="background:rgba(163,230,53,.08);color:var(--run)">TC</div><span class="cl-name">Taller Central</span><div class="sdot ok"></div></div>
+        </div>
+      </div>
+      <!-- accordion: con issues -->
+      <div class="acc-g" style="margin-top:4px">
+        <div class="acc-g-h" onclick="togAcc(this.parentElement)">
+          <span class="acc-g-lbl" style="color:var(--warn)">Con issues</span>
+          <span style="display:flex;align-items:center;gap:5px"><span class="acc-g-ct">1</span><span class="acc-chev">▾</span></span>
+        </div>
+        <div class="acc-items">
+          <div class="cl-pill"><div class="cl-av" style="background:rgba(239,68,68,.1);color:#F87171">GS</div><span class="cl-name">Grupo Seis</span><div class="sdot w"></div></div>
+        </div>
+      </div>
+      <!-- accordion: pausados (collapsed) -->
+      <div class="acc-g col" style="margin-top:4px">
+        <div class="acc-g-h" onclick="togAcc(this.parentElement)">
+          <span class="acc-g-lbl" style="color:var(--t3)">Pausados</span>
+          <span style="display:flex;align-items:center;gap:5px"><span class="acc-g-ct">2</span><span class="acc-chev">▾</span></span>
+        </div>
+        <div class="acc-items">
+          <div class="cl-pill"><div class="cl-av" style="background:rgba(226,232,240,.06);color:#94A3B8">VT</div><span class="cl-name">Viajes Turín</span><div class="sdot off"></div></div>
+          <div class="cl-pill"><div class="cl-av" style="background:rgba(226,232,240,.06);color:#94A3B8">FO</div><span class="cl-name">Ferretería Oeste</span><div class="sdot off"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="sb-team">
+      <div class="tav" style="background:rgba(6,182,212,.18);color:var(--acc)">FR<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(163,230,53,.18);color:var(--run)">LU<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(160,160,180,.12);color:#94A3B8">NO</div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="ch">
+      <div class="ch-av" style="background:rgba(6,182,212,.13);color:var(--acc)">RC</div>
+      <div style="flex:1"><div class="ch-n">RC Repuestos</div><div class="ch-s">Portal B2B · Vercel · 16 deploys este mes</div></div>
+      <div class="acts"><button class="btn btn-s btn-sm">↗ Ver prod</button><button class="btn btn-p btn-sm">↑ Deploy</button></div>
+    </div>
+    <div class="tbbar">
+      <div class="tbi">Resumen</div><div class="tbi">Tareas</div><div class="tbi">Terminal</div><div class="tbi on">Deploys</div><div class="tbi">Settings</div>
+    </div>
+    <div class="scr">
+      <!-- prod card -->
+      <div class="card" style="border-color:var(--ok-b);margin-bottom:13px">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+              <span class="sp sp-ok">● Producción</span>
+              <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--t1)">v1.4.3</span>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">hace 1h · Franco S.</span>
+            </div>
+            <div style="font-size:12.5px;color:var(--t2);margin-bottom:7px">feat: OAuth2 flow para distribuidores (T037)</div>
+            <div style="font-family:var(--mono);font-size:10px"><a href="#">↗ rc-repuestos.vercel.app</a> · <a href="#">↗ preview: rc-1a2b.vercel.app</a></div>
+          </div>
+          <div style="display:flex;gap:12px">
+            <div class="lh"><div class="lhc" style="border-color:var(--ok);color:var(--ok)">94</div><div class="lhl">Perf</div></div>
+            <div class="lh"><div class="lhc" style="border-color:var(--ok);color:var(--ok)">98</div><div class="lhl">Access</div></div>
+            <div class="lh"><div class="lhc" style="border-color:var(--ok);color:var(--ok)">100</div><div class="lhl">SEO</div></div>
+            <div class="lh"><div class="lhc" style="border-color:var(--warn);color:var(--warn)">78</div><div class="lhl">Best Pr</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- historial -->
+      <div class="shdr"><span class="st">Historial<span class="sc">16 este mes</span></span></div>
+      <div class="di" style="border-color:var(--ok-b)">
+        <div class="di-h">
+          <div class="di-ic" style="background:var(--ok-d);color:var(--ok)">✓</div>
+          <div style="flex:1"><div class="di-t">feat: OAuth2 flow para distribuidores (T037)</div><div class="di-sh">f1a2b3c · main · Franco S. · hace 1h</div></div>
+          <div class="di-checks">
+            <span class="chk" style="background:var(--ok-d);color:var(--ok)">✓ build 1m48s</span>
+            <span class="chk" style="background:var(--ok-d);color:var(--ok)">✓ tests 34/34</span>
+            <span class="chk" style="background:var(--ok-d);color:var(--ok)">✓ e2e 12/12</span>
+          </div>
+          <div class="di-m">v1.4.3 · 2m 04s</div>
+        </div>
+        <div class="di-b">
+          <div style="display:flex;gap:20px">
+            <div style="flex:1">
+              <div style="color:var(--t3);margin-bottom:4px">src/auth/oauth.ts · +47 −0</div>
+              <div class="diff-l da">+  export async function getDistributorAuthURL(...) {</div>
+              <div class="diff-l da">+    const params = new URLSearchParams({...</div>
+              <div class="diff-l da">+    return `${RC_OAUTH_BASE_URL}/authorize?${params}`</div>
+              <div class="diff-l da">+  }</div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <div class="lh"><div class="lhc" style="border-color:var(--ok);color:var(--ok);width:30px;height:30px;font-size:10px">94</div><div class="lhl">Perf</div></div>
+              <div class="lh"><div class="lhc" style="border-color:var(--ok);color:var(--ok);width:30px;height:30px;font-size:10px">98</div><div class="lhl">Access</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="di">
+        <div class="di-h">
+          <div class="di-ic" style="background:var(--ok-d);color:var(--ok)">✓</div>
+          <div style="flex:1"><div class="di-t">feat: filtro por marca en catálogo (T034)</div><div class="di-sh">c4d5e6f · main · Lucho A. · hace 3h</div></div>
+          <div class="di-checks"><span class="chk" style="background:var(--ok-d);color:var(--ok)">✓ build</span><span class="chk" style="background:var(--ok-d);color:var(--ok)">✓ tests 34/34</span></div>
+          <div class="di-m">v1.4.2 · 1m 52s</div>
+        </div>
+      </div>
+      <div class="di" style="border-color:var(--err-b)">
+        <div class="di-h">
+          <div class="di-ic" style="background:var(--err-d);color:var(--err)">✗</div>
+          <div style="flex:1"><div class="di-t" style="color:var(--err)">fix: paginación catálogo (primer intento)</div><div class="di-sh">7a6b5c4 · main · Franco S. · ayer</div></div>
+          <div class="di-checks"><span class="chk" style="background:var(--ok-d);color:var(--ok)">✓ lint</span><span class="chk" style="background:var(--err-d);color:var(--err)">✗ tests 31/34</span></div>
+          <div class="di-m">45s · rolled back</div>
+        </div>
+        <div class="di-b"><div style="color:var(--err);margin-bottom:4px">Error: CatalogPagination.test.tsx — ReferenceError: usePaginatedQuery is not defined</div><div class="diff-l dr">-  import { usePaginatedQuery } from '@/hooks'</div><div class="diff-l da">+  import { usePaginatedQuery } from '@/lib/queries'</div></div>
+      </div>
+      <div class="di">
+        <div class="di-h">
+          <div class="di-ic" style="background:var(--ok-d);color:var(--ok)">✓</div>
+          <div style="flex:1"><div class="di-t">feat: búsqueda full-text catálogo (T028)</div><div class="di-sh">4e3d2c1 · main · Claude + Lucho · hace 2 días</div></div>
+          <div class="di-checks"><span class="chk" style="background:var(--ok-d);color:var(--ok)">✓ build 2m12s</span><span class="chk" style="background:var(--ok-d);color:var(--ok)">✓ tests 32/32</span><span class="chk" style="background:var(--ok-d);color:var(--ok)">✓ e2e</span></div>
+          <div class="di-m">v1.3.9 · 2m 12s</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     P6 — MARKETING INTERNO
+     ══════════════════════════════════════════ -->
+<div id="p6" class="panel">
+<div class="plabel">Marketing interno · dominio B · prospects de ManIAcos · breadcrumb solo "Marketing"</div>
+<div class="hub">
+  <aside class="sb">
+    <div class="sb-top"><div class="org"><div class="org-mark">M</div><div><div class="org-name">ManIAcos</div><div class="org-sub">3 socios · 8 proyectos</div></div></div></div>
+    <div class="sb-sec">
+      <div class="sb-sec-lbl">Hub</div>
+      <div class="si"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="8" y="1" width="5" height="5" rx="1.2" fill="currentColor" opacity=".45"/><rect x="1" y="8" width="5" height="5" rx="1.2" fill="currentColor" opacity=".45"/><rect x="8" y="8" width="5" height="5" rx="1.2" fill="currentColor" opacity=".45"/></svg>Proyectos</div>
+      <div class="si on"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 10l3.5-3.5 2.5 2.5 4-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Marketing<span class="sibadge r">4 activos</span></div>
+      <div class="si"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="3" width="11" height="8.5" rx="1.2" stroke="currentColor" stroke-width="1.4"/><path d="M4 3V2.5a1 1 0 0 1 2 0V3M8 3V2.5a1 1 0 0 1 2 0V3" stroke="currentColor" stroke-width="1.4"/></svg>Ops</div>
+      <div class="si"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.4"/><path d="M7 4.5V7l1.5 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Finanzas</div>
+    </div>
+    <div class="sb-team" style="margin-top:auto">
+      <div class="tav" style="background:rgba(6,182,212,.18);color:var(--acc)">FR<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(163,230,53,.18);color:var(--run)">LU<span class="tdot"></span></div>
+      <div class="tav" style="background:rgba(160,160,180,.12);color:#94A3B8">NO</div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="tbar">
+      <span class="tbar-t">Marketing</span>
+      <div class="acts">
+        <button class="btn btn-s btn-sm">Exportar reporte</button>
+        <button class="btn btn-p btn-sm">+ Nueva campaña</button>
+      </div>
+    </div>
+    <div class="scr">
+      <!-- KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-l">Leads este mes</div><div class="kpi-v">248</div><div class="kpi-s">▲ +14% vs anterior</div></div>
+        <div class="kpi"><div class="kpi-l">Tasa apertura email</div><div class="kpi-v">38.4%</div><div class="kpi-s">▲ +4.2pp · avg 22%</div></div>
+        <div class="kpi"><div class="kpi-l">Conversión</div><div class="kpi-v">6.8%</div><div class="kpi-s">▲ +1.2pp trimestre</div></div>
+        <div class="kpi" style="border-color:var(--warn-b)"><div class="kpi-l">Cola HITL</div><div class="kpi-v" style="color:var(--warn)">7</div><div class="kpi-s" style="color:var(--warn)">⚠ revisar hoy</div></div>
+      </div>
+      <!-- agentes activos -->
+      <div class="shdr"><span class="st">Agentes<span class="sc">4 corriendo · 1 en espera</span></span></div>
+      <div class="agent-row">
+        <div class="ag run"><div class="ag-h"><div class="ag-dot" style="background:var(--run)"></div><span class="ag-n">lead-nurture-v2</span><span class="ag-st" style="color:var(--run)">● corriendo</span></div><div class="ag-task">procesando batch_248 · 3/8 leads</div><div style="height:2px;background:var(--s3);margin-top:6px;border-radius:2px;overflow:hidden"><div style="height:100%;width:37%;background:var(--run)"></div></div></div>
+        <div class="ag run"><div class="ag-h"><div class="ag-dot" style="background:var(--warn)"></div><span class="ag-n">email-sender-v1</span><span class="ag-st" style="color:var(--warn)">⚠ HITL</span></div><div class="ag-task">aguardando aprobación draft_8472</div></div>
+        <div class="ag run"><div class="ag-h"><div class="ag-dot" style="background:var(--run)"></div><span class="ag-n">scraper-leads-v3</span><span class="ag-st" style="color:var(--run)">● corriendo</span></div><div class="ag-task">Google Maps Córdoba · 127 perfiles</div></div>
+        <div class="ag" style="opacity:.55"><div class="ag-h"><div class="ag-dot" style="background:var(--t3)"></div><span class="ag-n">report-weekly-v1</span><span class="ag-st" style="color:var(--t3)">esperando</span></div><div class="ag-task">próxima ejecución: viernes 18:00</div></div>
+      </div>
+      <!-- leads -->
+      <div class="shdr">
+        <span class="st">Cola de Leads<span class="sc">248 total</span></span>
+        <div class="chips"><div class="chip on">Todos</div><div class="chip">HOT</div><div class="chip">WARM</div><div class="chip">COLD</div><div class="chip">HITL pendiente</div></div>
+      </div>
+      <div style="margin-top:9px">
+        <div class="lead-r" style="border-color:var(--run-b)">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--run);flex-shrink:0"></div>
+          <div class="lead-n">Roberto Sánchez</div>
+          <div class="lead-c">Taller Mecánico RSA</div>
+          <span class="lead-score ls-h">HOT 87</span>
+          <div class="lead-stage">calificado</div>
+          <span class="draft-p dp-pen">⚠ draft</span>
+          <button class="btn btn-p btn-sm" style="margin-left:6px">Aprobar</button>
+        </div>
+        <div class="lead-r">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--warn);flex-shrink:0"></div>
+          <div class="lead-n">María García</div>
+          <div class="lead-c">Repuestos García Hnos.</div>
+          <span class="lead-score ls-w">WARM 72</span>
+          <div class="lead-stage">drip_3</div>
+          <span class="draft-p dp-sent">✉ enviado</span>
+        </div>
+        <div class="lead-r" style="border-color:var(--run-b)">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--run);flex-shrink:0"></div>
+          <div class="lead-n">Diego Méndez</div>
+          <div class="lead-c">AutoCenter Sur</div>
+          <span class="lead-score ls-h">HOT 91</span>
+          <div class="lead-stage">calificado</div>
+          <span class="draft-p dp-pen">⚠ draft</span>
+          <button class="btn btn-p btn-sm" style="margin-left:6px">Aprobar</button>
+        </div>
+        <div class="lead-r">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--warn);flex-shrink:0"></div>
+          <div class="lead-n">Laura Ramírez</div>
+          <div class="lead-c">Flota Express S.A.</div>
+          <span class="lead-score ls-w">WARM 68</span>
+          <div class="lead-stage">nuevo</div>
+          <span style="font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:var(--rF);background:var(--s3);color:var(--t3)">sin draft</span>
+        </div>
+        <div class="lead-r">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--run);flex-shrink:0"></div>
+          <div class="lead-n">Hernán Ortiz</div>
+          <div class="lead-c">Mecánica Ortiz &amp; Hijos</div>
+          <span class="lead-score ls-h">HOT 83</span>
+          <div class="lead-stage">enviado</div>
+          <span class="draft-p dp-ok">✓ aprobado</span>
+          <span class="draft-p dp-sent" style="margin-left:4px">✉ enviado</span>
+        </div>
+        <div class="lead-r" style="opacity:.6">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--t3);flex-shrink:0"></div>
+          <div class="lead-n">Carlos Romero</div>
+          <div class="lead-c">Taller Barrio Sur</div>
+          <span class="lead-score ls-c">COLD 38</span>
+          <div class="lead-stage">cold-seq</div>
+          <span style="font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:var(--rF);background:var(--s3);color:var(--t3)">nurture lento</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<script>
+function sw(id,btn){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+  btn.classList.add('on');
+}
+function tog(hdr){
+  const g=hdr.parentElement;
+  const items=g.querySelector('.cl-items');
+  if(!items)return;
+  const collapsed=items.style.display==='none';
+  items.style.display=collapsed?'':'none';
+  hdr.classList.toggle('collapsed',!collapsed);
+}
+function togAcc(g){
+  g.classList.toggle('col');
+}
+</script>
+</body>
+</html>

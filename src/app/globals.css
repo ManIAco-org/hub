@@ -1,0 +1,127 @@
+/* ─── Tailwind CSS v4 ─── */
+@import "tailwindcss";
+
+/* ─── ManIAcos Brand Tokens ─── */
+@import "@maniaco/brand/tokens.css";
+
+/* ─── Tailwind v4 theme mapping (mirrors tokens.css vars) ─── */
+@theme {
+  /* Surfaces */
+  --color-bg:     var(--bg);
+  --color-s1:     var(--s1);
+  --color-s2:     var(--s2);
+  --color-s3:     var(--s3);
+  --color-border: var(--border);
+  --color-bsub:   var(--bsub);
+
+  /* Text */
+  --color-t1: var(--t1);
+  --color-t2: var(--t2);
+  --color-t3: var(--t3);
+
+  /* Accents */
+  --color-acc:  var(--acc);
+  --color-run:  var(--run);
+  --color-ok:   var(--ok);
+  --color-warn: var(--warn);
+  --color-err:  var(--err);
+
+  /* Cyan scale */
+  --color-cyan-50:  var(--cyan-50);
+  --color-cyan-100: var(--cyan-100);
+  --color-cyan-200: var(--cyan-200);
+  --color-cyan-300: var(--cyan-300);
+  --color-cyan-400: var(--cyan-400);
+  --color-cyan-500: var(--cyan-500);
+  --color-cyan-600: var(--cyan-600);
+  --color-cyan-700: var(--cyan-700);
+  --color-cyan-800: var(--cyan-800);
+  --color-cyan-900: var(--cyan-900);
+
+  /* Typography */
+  --font-ui:      'Instrument Sans', system-ui, sans-serif;
+  --font-mono:    'Geist Mono', 'Courier New', monospace;
+  --font-display: 'Fraunces', Georgia, serif;
+
+  /* Border radius aliases */
+  --radius-sm:   var(--r4);
+  --radius-md:   var(--r6);
+  --radius-lg:   var(--r8);
+  --radius-xl:   var(--r12);
+  --radius-2xl:  var(--r16);
+  --radius-full: var(--rF);
+}
+
+/* ─── Base styles ─── */
+html {
+  color-scheme: dark;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--bg);
+  color: var(--t1);
+  font-family: var(--ui);
+}
+
+/* ─── Focus ring — keyboard accessibility ─── */
+:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+/* ─── Scrollbar (dark-native) ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--s1);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--s3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--t3);
+}
+
+/* ─── Skeleton shimmer animation ─── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--s2) 25%,
+    var(--s3) 50%,
+    var(--s2) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--r6);
+}
+
+/* ─── Status dot pulse (for active/running states) ─── */
+@keyframes pulse-run {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+.dot-run {
+  background: var(--run);
+  animation: pulse-run 2s ease-in-out infinite;
+}
+
+/* ─── Card flash on Realtime update ─── */
+@keyframes rt-flash {
+  0%   { background-color: var(--s2); }
+  30%  { background-color: var(--acc-d); }
+  100% { background-color: var(--s2); }
+}
+
+.rt-flash {
+  animation: rt-flash 800ms ease-out;
+}
