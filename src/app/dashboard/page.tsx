@@ -17,7 +17,6 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  // Fetch team status — RLS ensures only authenticated users can read
   const { data: teamData, error } = await supabase
     .from('team_status')
     .select('*')
@@ -34,7 +33,6 @@ export default async function DashboardPage() {
       <Topbar title="Equipo" />
 
       <div style={{ padding: '24px 28px', flex: 1 }}>
-        {/* Section header */}
         <div style={{ marginBottom: '20px' }}>
           <h2
             style={{

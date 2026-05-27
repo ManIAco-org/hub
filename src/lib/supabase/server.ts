@@ -1,10 +1,7 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
+import type { CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
-/**
- * Server-side Supabase client (Server Components, Route Handlers, Middleware).
- * Reads/writes session cookies securely on the server.
- */
 export async function createClient() {
   const cookieStore = await cookies()
 
@@ -22,7 +19,9 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             )
           } catch {
-            // Server Component can't set cookies — middleware handles refresh
+            // The `setAll` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
           }
         },
       },

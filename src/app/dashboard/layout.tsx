@@ -1,8 +1,14 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
-import { upsertMemberStatus } from '@/lib/supabase/upsert-member'
 import type { ReactNode } from 'react'
+import type { MemberName } from '@/lib/types'
+
+const TEAM_NAMES: Record<string, MemberName> = {
+  'franco.sanmartin@maniaco.online': 'Franco',
+  'lucho@maniaco.online': 'Lucho',
+  'noe@maniaco.online': 'Noe',
+}
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient()
@@ -15,12 +21,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     redirect('/login')
   }
 
-  // Ensure team_status row exists for this member (idempotent)
-  const memberName = await upsertMemberStatus(user.email)
+  const memberName = TEAM_NAMES[user.email]
 
-  // If not a known team member, redirect to login (shouldn't happen with magic link)
   if (!memberName) {
-    await supabase.auth.signOut()
     redirect('/login')
   }
 
