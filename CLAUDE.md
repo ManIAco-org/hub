@@ -1,6 +1,10 @@
 <!-- SPECKIT START -->
 # Hub ManIAcos — Runtime Guidance for Claude Code
 
+## Lectura obligatoria
+Antes de cualquier task, leer **`VIBECODING_RULES.md`** en la raíz del repo.
+Contiene: reglas de commits, stack canónico, design tokens, patrones Supabase, estructura de dirs.
+
 ## Constitution (lectura obligatoria antes de cualquier feature)
 - `.specify/memory/constitution.md` — v1.0.0 (9 principios fundacionales).
 - 3 principios NON-NEGOTIABLE que afectan TODO output:
@@ -25,3 +29,21 @@
 ## Próximas fases pendientes
 - /speckit-specify → /speckit-clarify → /speckit-plan → /speckit-tasks → /speckit-taskstoissues
 <!-- SPECKIT END -->
+
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
+
+Key routing rules:
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
