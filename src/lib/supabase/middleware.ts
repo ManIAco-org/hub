@@ -38,6 +38,9 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  const cookieNames = request.cookies.getAll().map(c => c.name).join(',')
+  console.log(`[PROXY] ${request.nextUrl.pathname} | cookies=${cookieNames} | user=${user?.email ?? 'NULL'}`)
+
   if (
     !user &&
     !request.nextUrl.pathname.startsWith('/login') &&
