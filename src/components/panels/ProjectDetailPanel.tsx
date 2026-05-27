@@ -259,18 +259,23 @@ function TabMcp({ project }: { project: Project }) {
 
 // ─── Tab: Terminal ────────────────────────────────────────────────────────────
 function TabTerminal({ project }: { project: Project }) {
-  const openSession = useTerminalStore((s) => s.openSession)
   const sessions    = useTerminalStore((s) => s.sessions)
 
-  // clientSlug from project: e.g. "RC Repuestos" → "rc-repuestos"
-  const clientSlug = project.client_name
-    ? project.client_name.toLowerCase().replace(/\s+/g, '-')
-    : 'personal'
+  // server_path → derive clientSlug: /srv/maniacos/rc-repuestos → "rc-repuestos"
+  // If no server_path, derive from project name as fallback
+  const clientSlug: string = project.server_path
+    ? project.server_path.replace('/srv/maniacos/', '').split('/')[0] ?? project.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
+    : project.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
   const sessionId  = `project-${project.id}`
   const isOpen     = sessions.some((s) => s.id === sessionId)
 
+  const openStore = useTerminalStore((s) => s.openSession)
+  const setOpen   = useTerminalStore((s) => s.setOpen)
+  const setMin    = useTerminalStore((s) => s.setMinimized)
+
   function handleOpen() {
-    openSession({
+    if (isOpen) { setOpen(true); setMin(false); return }
+    openStore({
       id: sessionId,
       clientSlug,
       projectId: project.id,
@@ -279,88 +284,48 @@ function TabTerminal({ project }: { project: Project }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Info banner */}
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 20px', gap: '24px', textAlign: 'center' }}>
+      {/* Icon */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
-        padding: '12px 16px',
-        background: 'var(--acc-d)',
-        border: '1px solid var(--acc-b)',
-        borderRadius: 'var(--r8)',
+        width: '64px', height: '64px', borderRadius: '18px',
+        background: 'var(--acc-d)', border: '1px solid var(--acc-b)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <Terminal size={16} color="var(--acc)" />
-        <div>
-          <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--t1)', marginBottom: '2px' }}>
-            Terminal del proyecto
-          </p>
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)' }}>
-            Abre una sesión tmux en el Oracle ARM con Claude Code listo para usar.
-          </p>
-        </div>
+        <Terminal size={28} color="var(--acc)" />
       </div>
 
-      {/* Path info */}
-      {project.server_path && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-          padding: '10px 14px',
-          background: 'var(--s2)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--r8)',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--t2)',
-        }}>
-          <Terminal size={13} color="var(--t3)" />
-          <span>Directorio:</span>
-          <code style={{ fontFamily: 'var(--mono)', color: 'var(--t1)', fontSize: '12px' }}>
-            {project.server_path}
-          </code>
-        </div>
-      )}
+      {/* Heading */}
+      <div style={{ maxWidth: '420px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <h3 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--t1)', margin: 0 }}>
+          Terminal
+        </h3>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t3)', lineHeight: 1.6, margin: 0 }}>
+          Abrí Claude Code conectado al repo del cliente con MCPs configurados.
+          {project.server_path && (
+            <> Directorio:{' '}
+              <code style={{ fontFamily: 'var(--mono)', color: 'var(--t2)', fontSize: '11px' }}>
+                {project.server_path}
+              </code>
+            </>
+          )}
+        </p>
+      </div>
 
       {/* CTA */}
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-        <button
-          onClick={handleOpen}
-          className="btn-primary"
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--text-sm)', padding: '10px 20px' }}
-        >
-          <Terminal size={15} />
-          {isOpen ? '↓ Ir a terminal' : '💻 Trabajar'}
-        </button>
-        {isOpen && (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--acc)' }}>
-            Terminal abierta — click para enfocar
-          </span>
-        )}
-      </div>
+      <button
+        onClick={handleOpen}
+        className="btn-primary"
+        style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: 'var(--text-base)', padding: '13px 28px' }}
+      >
+        <Terminal size={17} />
+        {isOpen ? '↓ Ir a terminal' : '💻 Trabajar'}
+      </button>
 
-      {/* Tips */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <p style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Comandos útiles
-        </p>
-        {[
-          { cmd: 'claude', desc: 'Abrir Claude Code' },
-          { cmd: 'git pull && npm run dev', desc: 'Actualizar y correr en local' },
-          { cmd: 'npm run build', desc: 'Build de producción' },
-        ].map(({ cmd, desc }) => (
-          <div
-            key={cmd}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '8px 12px',
-              background: 'var(--s2)', border: '1px solid var(--border)',
-              borderRadius: 'var(--r6)',
-            }}
-          >
-            <code style={{ fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--acc)', minWidth: '200px' }}>
-              {cmd}
-            </code>
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)' }}>{desc}</span>
-          </div>
-        ))}
-      </div>
+      {isOpen && (
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--acc)' }}>
+          Terminal abierta — click para enfocar
+        </span>
+      )}
     </div>
   )
 }

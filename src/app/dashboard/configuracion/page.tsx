@@ -1,7 +1,7 @@
 import { Topbar } from '@/components/layout/Topbar'
 import { ConfiguracionPanel } from '@/components/panels/ConfiguracionPanel'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 60
 
 export default function ConfiguracionPage() {
   return (

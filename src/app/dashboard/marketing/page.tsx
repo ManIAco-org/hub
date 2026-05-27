@@ -1,7 +1,7 @@
 import { Topbar } from '@/components/layout/Topbar'
 import { MarketingPanel } from '@/components/panels/MarketingPanel'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 60
 
 export default function MarketingPage() {
   return (

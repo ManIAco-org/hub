@@ -5,7 +5,7 @@ import { toSlug } from '@/lib/utils'
 import type { Project } from '@/lib/types'
 import { notFound } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 60
 
 export default async function ClientDetailPage({
   params,

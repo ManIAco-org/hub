@@ -9,6 +9,8 @@ export interface TerminalReadyInfo {
 
 export interface ConnectOptions {
   jwt: string
+  /** Empty string = personal workspace (/srv/maniacos/personal/<user>).
+   *  Any other value = /srv/maniacos/<slug>. */
   clientSlug: string
   cols: number
   rows: number
@@ -41,16 +43,18 @@ export function connectTerminal(opts: ConnectOptions): TerminalSocket {
     if (closed) return
     const delay = Math.min(1_000 * Math.pow(2, reconnectAttempt), 30_000)
     reconnectAttempt++
+    console.debug(`[terminal] reconnect #${reconnectAttempt} in ${delay}ms`)
     reconnectTimer = setTimeout(() => { if (!closed) connect() }, delay)
   }
 
   function connect() {
+    console.debug('[terminal] connecting to', WS_URL)
     ws = new WebSocket(WS_URL)
     authed = false
 
     ws.onopen = () => {
+      console.debug('[terminal] WS open, waiting for ready...')
       reconnectAttempt = 0
-      // server will send {"type":"ready"} — we reply with auth there
     }
 
     ws.onmessage = (event: MessageEvent) => {
@@ -61,20 +65,24 @@ export function connectTerminal(opts: ConnectOptions): TerminalSocket {
 
       if (msg) {
         switch (msg.type) {
-          case 'ready':
-            ws!.send(JSON.stringify({
+          case 'ready': {
+            const authPayload = {
               type: 'auth',
               token: opts.jwt,
-              clientSlug: opts.clientSlug,
+              clientSlug: opts.clientSlug,   // "" = personal, else project slug
               cols: opts.cols,
               rows: opts.rows,
-            }))
+            }
+            console.debug('[terminal] → auth', { clientSlug: authPayload.clientSlug, cols: authPayload.cols, rows: authPayload.rows })
+            ws!.send(JSON.stringify(authPayload))
             break
+          }
           case 'auth_ok':
             authed = true
+            console.debug('[terminal] auth_ok', msg)
             opts.onReady({
-              user: String(msg.user ?? ''),
-              cwd: String(msg.cwd ?? ''),
+              user:    String(msg.user    ?? ''),
+              cwd:     String(msg.cwd     ?? ''),
               session: String(msg.session ?? ''),
             })
             // Start heartbeat responder
@@ -84,17 +92,38 @@ export function connectTerminal(opts: ConnectOptions): TerminalSocket {
               }
             }, 25_000)
             break
+
+          case 'auth_error': {
+            // Authentication rejected — do NOT reconnect (wrong creds/user)
+            const errMsg = String(msg.message ?? 'Autenticación rechazada')
+            console.error('[terminal] auth_error:', errMsg)
+            opts.onError(errMsg)
+            closed = true       // prevent reconnect loop on auth failures
+            clearTimers()
+            ws?.close(1000, 'auth_error')
+            break
+          }
+
           case 'heartbeat':
             if (ws?.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: 'pong' }))
             }
             break
-          case 'error':
-            opts.onError(String(msg.message ?? 'Error del servidor'))
+
+          case 'error': {
+            const errMsg = String(msg.message ?? 'Error del servidor')
+            console.error('[terminal] server error:', errMsg)
+            opts.onError(errMsg)
             break
+          }
+
           case 'exit':
+            console.debug('[terminal] terminal exited')
             opts.onClose()
             break
+
+          default:
+            console.debug('[terminal] unknown message type:', msg.type)
         }
       } else if (authed) {
         // Raw terminal output
@@ -102,7 +131,8 @@ export function connectTerminal(opts: ConnectOptions): TerminalSocket {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      console.debug('[terminal] WS closed:', event.code, event.reason)
       clearTimers()
       if (!closed) {
         opts.onClose()
@@ -110,7 +140,8 @@ export function connectTerminal(opts: ConnectOptions): TerminalSocket {
       }
     }
 
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+      console.error('[terminal] WS error:', event)
       opts.onError('Error de conexión WebSocket')
     }
   }

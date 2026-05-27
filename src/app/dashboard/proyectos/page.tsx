@@ -3,7 +3,7 @@ import { Topbar } from '@/components/layout/Topbar'
 import { ProjectsPanel } from '@/components/panels/ProjectsPanel'
 import type { Project } from '@/lib/types'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 60
 
 export default async function ProyectosPage({
   searchParams,
