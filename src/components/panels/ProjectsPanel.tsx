@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ExternalLink, Github, Monitor } from 'lucide-react'
+import { ExternalLink, Github, Monitor, X } from 'lucide-react'
 import type { Project, ProjectStatus } from '@/lib/types'
 
 const STATUS_BADGE: Record<ProjectStatus, { label: string; className: string }> = {
@@ -32,11 +33,14 @@ const EMPTY_FORM: NewProjectForm = {
 export function ProjectsPanel({
   initialData,
   ownerEmail,
+  filterCliente,
 }: {
   initialData: Project[]
   ownerEmail: string
+  filterCliente?: string
 }) {
   const supabase = createClient()
+  const router = useRouter()
   const [projects, setProjects] = useState<Project[]>(initialData)
   const [showNewForm, setShowNewForm] = useState(false)
   const [form, setForm] = useState<NewProjectForm>(EMPTY_FORM)
@@ -79,6 +83,10 @@ export function ProjectsPanel({
     setShowNewForm(false)
   }
 
+  const displayed = filterCliente
+    ? projects.filter((p) => p.client_name === filterCliente)
+    : projects
+
   return (
     <div>
       {/* Header */}
@@ -95,7 +103,8 @@ export function ProjectsPanel({
             Proyectos
           </h2>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t2)' }}>
-            {projects.length} proyecto{projects.length !== 1 ? 's' : ''} activo{projects.length !== 1 ? 's' : ''}
+            {displayed.length} proyecto{displayed.length !== 1 ? 's' : ''}
+            {filterCliente && ` de ${filterCliente}`}
           </p>
         </div>
         <button
@@ -106,6 +115,42 @@ export function ProjectsPanel({
           + Nuevo proyecto
         </button>
       </div>
+
+      {/* Filter banner */}
+      {filterCliente && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '8px 14px',
+            background: 'var(--s2)',
+            border: '1px solid var(--acc)',
+            borderRadius: 'var(--r8)',
+            marginBottom: '16px',
+            fontSize: 'var(--text-sm)',
+            color: 'var(--t2)',
+          }}
+        >
+          <span>Filtrando por cliente: <strong style={{ color: 'var(--acc)' }}>{filterCliente}</strong></span>
+          <button
+            onClick={() => router.push('/dashboard/proyectos')}
+            style={{
+              marginLeft: 'auto',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--t3)',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '2px',
+            }}
+            title="Quitar filtro"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* New project modal (inline) */}
       {showNewForm && (
@@ -237,7 +282,7 @@ export function ProjectsPanel({
       )}
 
       {/* Empty state */}
-      {projects.length === 0 ? (
+      {displayed.length === 0 ? (
         <div
           style={{
             display: 'flex',
@@ -249,7 +294,7 @@ export function ProjectsPanel({
           }}
         >
           <p style={{ color: 'var(--t2)', fontSize: 'var(--text-md)' }}>
-            Sin proyectos — empezá el primero.
+            {filterCliente ? `Sin proyectos para ${filterCliente}.` : 'Sin proyectos — empezá el primero.'}
           </p>
           <button
             onClick={() => setShowNewForm(true)}
@@ -290,10 +335,10 @@ export function ProjectsPanel({
               </tr>
             </thead>
             <tbody>
-              {projects.map((project, idx) => {
+              {displayed.map((project, idx) => {
                 const badge = STATUS_BADGE[project.status]
                 const hasServerPath = Boolean(project.server_path)
-                const isLast = idx === projects.length - 1
+                const isLast = idx === displayed.length - 1
 
                 return (
                   <tr
