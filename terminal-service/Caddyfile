@@ -1,0 +1,34 @@
+# ManIAcos Terminal Service — Caddy reverse proxy config
+# Deploy to Oracle ARM alongside Caddyfile principal
+#
+# ⚠  ANTES DE ACTIVAR: agregar en DNS Cloudflare:
+#    Type: A  |  Name: term  |  Content: 146.181.33.225  |  Proxy: DNS only (grey)
+#
+# Merge este bloque en el Caddyfile existente de Oracle,
+# o apuntar Caddy a este archivo directamente.
+
+term.maniaco.online {
+    # WebSocket upgrade obligatorio para /ws-terminal
+    reverse_proxy localhost:3001 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+    }
+
+    # Health check accesible públicamente (sin auth)
+    @health path /health
+    handle @health {
+        reverse_proxy localhost:3001
+    }
+
+    # TLS: Caddy auto-provisions via Let's Encrypt
+    tls {
+        protocols tls1.2 tls1.3
+    }
+
+    log {
+        output file /var/log/caddy/term.maniaco.online.log {
+            roll_size 10mb
+            roll_keep 3
+        }
+    }
+}

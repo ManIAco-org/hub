@@ -1,0 +1,46 @@
+services:
+  terminal-service:
+    build: .
+    container_name: maniaco-terminal
+    restart: unless-stopped
+
+    # Host networking: service binds to 127.0.0.1:3001, Caddy reverse-proxies to it.
+    # No port mapping needed — Caddy on the same host reaches it directly.
+    network_mode: host
+
+    # Privileged required for node-pty to setuid/setgid when spawning user shells.
+    privileged: true
+
+    volumes:
+      # Project filesystem — terminal cwds live here
+      - /srv/maniacos:/srv/maniacos
+
+      # Home directories — needed for shell env (HOME, history, etc.)
+      - /home:/home
+
+      # Mount host user/group DB so container knows UID/GID → name mappings
+      - /etc/passwd:/etc/passwd:ro
+      - /etc/group:/etc/group:ro
+
+    environment:
+      PORT: "3001"
+
+      # Supabase — get these from: Project Settings → API
+      SUPABASE_JWT_SECRET:       "${SUPABASE_JWT_SECRET}"
+      SUPABASE_URL:              "${SUPABASE_URL}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY}"
+
+      # Linux UID/GID for each team member on Oracle ARM.
+      # Run `id franco` on the server to get the real values.
+      UID_FRANCO: "${UID_FRANCO:-1000}"
+      GID_FRANCO: "${GID_FRANCO:-1000}"
+      UID_LUCHO:  "${UID_LUCHO:-1001}"
+      GID_LUCHO:  "${GID_LUCHO:-1001}"
+      UID_NOE:    "${UID_NOE:-1002}"
+      GID_NOE:    "${GID_NOE:-1002}"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
