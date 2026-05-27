@@ -36,5 +36,8 @@ Thumbs.db
 # ─── Vercel ─────────────────────────────────────────────────────────────────
 .vercel
 
+# ─── Supabase CLI temp files ─────────────────────────────────────────────────
+supabase/.temp/
+
 # ─── Brand: hub/brand/ IS committed (file: dependency for Vercel build) ─────
 # Do NOT add brand/ here
