@@ -1,12 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
 import type { ReactNode } from 'react'
-import type { MemberName } from '@/lib/types'
 
-const TEAM_NAMES: Record<string, MemberName> = {
-  'franco.sanmartin@maniaco.online': 'Franco',
-  'lucho@maniaco.online': 'Lucho',
-  'noe@maniaco.online': 'Noe',
+// Display names shown in sidebar footer — full name by email
+const DISPLAY_NAMES: Record<string, string> = {
+  'franco.sanmartin@maniaco.online': 'Franco San Martín',
+  'lucho@maniaco.online': 'Luis Giannasi',
+  'noe@maniaco.online': 'Noelia Bottallo',
+  'contacto@maniaco.online': 'ManIAcos',
+}
+
+function getDisplayName(email: string): string {
+  return DISPLAY_NAMES[email] ?? email.split('@')[0] ?? email
 }
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
@@ -17,7 +22,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   } = await supabase.auth.getUser()
 
   // Auth enforced by proxy — no redirect here
-  const memberName: MemberName = TEAM_NAMES[user?.email ?? ''] ?? 'Franco'
+  const displayName = getDisplayName(user?.email ?? '')
 
   return (
     <div
@@ -27,7 +32,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         background: 'var(--bg)',
       }}
     >
-      <Sidebar userEmail={user?.email ?? ''} memberName={memberName} />
+      <Sidebar userEmail={user?.email ?? ''} memberName={displayName} />
 
       <main
         style={{
