@@ -1,3 +1,5 @@
+// NOTE: This route is kept for future OAuth provider support.
+// In V1 it is not used — auth is via OTP code (verifyOtp client-side).
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
