@@ -8,20 +8,20 @@ import {
   FolderKanban,
   Building2,
   TerminalSquare,
-  Rocket,
   BarChart3,
+  Settings2,
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
 const NAV_ITEMS = [
-  { href: '/dashboard',           label: 'Equipo',      icon: Users },
-  { href: '/dashboard/proyectos', label: 'Proyectos',   icon: FolderKanban },
-  { href: '/dashboard/clientes',  label: 'Clientes',    icon: Building2 },
-  { href: '/dashboard/terminal',  label: 'Terminal',    icon: TerminalSquare },
-  { href: '/dashboard/deploys',   label: 'Deploys',     icon: Rocket },
-  { href: '/dashboard/marketing', label: 'Marketing',   icon: BarChart3 },
+  { href: '/dashboard',                label: 'Equipo',         icon: Users },
+  { href: '/dashboard/clientes',       label: 'Clientes',       icon: Building2 },
+  { href: '/dashboard/proyectos',      label: 'Proyectos',      icon: FolderKanban },
+  { href: '/dashboard/terminal',       label: 'Terminal',       icon: TerminalSquare },
+  { href: '/dashboard/marketing',      label: 'Marketing',      icon: BarChart3 },
+  { href: '/dashboard/configuracion',  label: 'Configuración',  icon: Settings2 },
 ] as const
 
 interface SidebarProps {
