@@ -44,8 +44,8 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
 
-    if (otp.length !== 6) {
-      setError('El código tiene 6 dígitos')
+    if (otp.length !== 8) {
+      setError('El código tiene 8 dígitos')
       return
     }
 
@@ -157,10 +157,10 @@ export default function LoginPage() {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                maxLength={6}
+                maxLength={8}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                placeholder="123456"
+                placeholder="12345678"
                 required
                 autoFocus
                 disabled={isPending}
@@ -182,9 +182,9 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={isPending || otp.length !== 6}
+              disabled={isPending || otp.length !== 8}
               className="btn-primary w-full justify-center"
-              style={{ opacity: isPending || otp.length !== 6 ? 0.7 : 1 }}
+              style={{ opacity: isPending || otp.length !== 8 ? 0.7 : 1 }}
             >
               {isPending ? 'Verificando...' : 'Entrar'}
             </button>
