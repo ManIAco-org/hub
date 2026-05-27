@@ -137,7 +137,7 @@ export default function LoginPage() {
             </button>
 
             <p className="text-xs mt-4 text-center" style={{ color: 'var(--t3)' }}>
-              Te llegará un código de 6 dígitos por email.
+              Te llegará un código de 8 dígitos por email. Revisá spam si no llega.
             </p>
           </form>
         ) : (
