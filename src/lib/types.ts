@@ -20,16 +20,38 @@ export interface TeamStatus {
 
 export type ProjectStatus = 'active' | 'paused' | 'done'
 
+export interface Client {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  contact_info: Record<string, string> | null
+  notes_md: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Project {
   id: string
   name: string
   client_name: string
+  client_id: string | null
   description: string | null
+  notes_md: string | null
   status: ProjectStatus
   vercel_url: string | null
   github_url: string | null
   server_path: string | null  // /srv/maniacos/<slug> on Oracle — null = terminal disabled
   owner_email: string
+  created_at: string
+  updated_at: string
+}
+
+export interface McpConfig {
+  id: string
+  project_id: string
+  mcp_name: string
+  config: Record<string, string>
   created_at: string
   updated_at: string
 }

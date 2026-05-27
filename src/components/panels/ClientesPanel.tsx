@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Building2, FolderKanban, ChevronRight, Clock } from 'lucide-react'
+import { toSlug } from '@/lib/utils'
 import type { Project, ProjectStatus } from '@/lib/types'
 
 interface ClientGroup {
@@ -158,7 +159,7 @@ export function ClientesPanel({ projects }: { projects: Project[] }) {
   const router = useRouter()
 
   function handleDrilldown(clientName: string) {
-    router.push(`/dashboard/proyectos?cliente=${encodeURIComponent(clientName)}`)
+    router.push(`/dashboard/clientes/${toSlug(clientName)}`)
   }
 
   // Group by client_name, sorted by most recent activity

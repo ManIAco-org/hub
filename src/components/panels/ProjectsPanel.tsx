@@ -346,9 +346,11 @@ export function ProjectsPanel({
                     style={{
                       borderBottom: isLast ? 'none' : '1px solid var(--bsub)',
                       transition: 'background var(--t-fast)',
+                      cursor: 'pointer',
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--s3)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onClick={() => router.push(`/dashboard/proyectos/${project.id}`)}
                   >
                     {/* Name */}
                     <td style={{ padding: '14px 16px' }}>
@@ -407,6 +409,7 @@ export function ProjectsPanel({
                           disabled={!hasServerPath}
                           title={hasServerPath ? 'Abrir terminal en este proyecto' : 'Configurá la ruta del servidor para habilitar el terminal'}
                           className="btn-secondary"
+                          onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/proyectos/${project.id}`) }}
                           style={{
                             fontSize: 'var(--text-xs)',
                             padding: '5px 10px',
@@ -424,6 +427,7 @@ export function ProjectsPanel({
                             href={project.github_url}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
                             style={{ color: 'var(--t3)', display: 'flex', alignItems: 'center' }}
                             onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--t1)')}
                             onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--t3)')}
