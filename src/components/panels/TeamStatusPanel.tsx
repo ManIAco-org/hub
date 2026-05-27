@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { TeamStatus, MemberStatus } from '@/lib/types'
 
@@ -370,8 +371,10 @@ export function TeamStatusPanel({ initialData, currentUserEmail }: TeamStatusPan
 
     if (error) {
       console.error('[TeamStatus] Update error:', error.message)
-      // Revert optimistic update on error
+      toast.error('Error al guardar — revertiendo')
       setMembers(initialData)
+    } else {
+      toast.success('Estado actualizado')
     }
   }
 

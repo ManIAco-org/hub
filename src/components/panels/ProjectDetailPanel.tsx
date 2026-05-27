@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, ListTodo, FileCode2, Terminal, Rocket,
@@ -105,7 +106,8 @@ function TabNotas({ project }: { project: Project }) {
 
   function handleSave() {
     startTransition(async () => {
-      await supabase.from('projects').update({ notes_md: notes }).eq('id', project.id)
+      const { error } = await supabase.from('projects').update({ notes_md: notes }).eq('id', project.id)
+      if (error) { toast.error('Error al guardar notas') } else { toast.success('Notas guardadas') }
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     })
@@ -272,7 +274,7 @@ function TabSettings({ project }: { project: Project }) {
   function handleSave() {
     setSaving(true)
     startTransition(async () => {
-      await supabase
+      const { error } = await supabase
         .from('projects')
         .update({
           name: form.name.trim(),
@@ -284,6 +286,7 @@ function TabSettings({ project }: { project: Project }) {
         })
         .eq('id', project.id)
       setSaving(false)
+      if (error) { toast.error('Error al guardar') } else { toast.success('Proyecto actualizado') }
       setSaved(true)
       setTimeout(() => { setSaved(false); router.refresh() }, 1500)
     })
