@@ -10,7 +10,7 @@ export default function LoginPage() {
   const [state, setState] = useState<State>('idle')
   const [error, setError] = useState<string | null>(null)
   const [resendCooldown, setResendCooldown] = useState(0)
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
 
   const supabase = createClient()
 
