@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
 import type { ReactNode } from 'react'
@@ -17,15 +16,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user?.email) {
-    redirect('/login')
-  }
-
-  const memberName = TEAM_NAMES[user.email]
-
-  if (!memberName) {
-    redirect('/login')
-  }
+  // Auth enforced by proxy — no redirect here
+  const memberName: MemberName = TEAM_NAMES[user?.email ?? ''] ?? 'Franco'
 
   return (
     <div
@@ -35,7 +27,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         background: 'var(--bg)',
       }}
     >
-      <Sidebar userEmail={user.email} memberName={memberName} />
+      <Sidebar userEmail={user?.email ?? ''} memberName={memberName} />
 
       <main
         style={{

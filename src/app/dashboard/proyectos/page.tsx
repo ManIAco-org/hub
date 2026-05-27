@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import { Topbar } from '@/components/layout/Topbar'
 import { ProjectsPanel } from '@/components/panels/ProjectsPanel'
 import type { Project } from '@/lib/types'
@@ -17,9 +16,7 @@ export default async function ProyectosPage({
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user?.email) {
-    redirect('/login')
-  }
+  // Auth enforced by proxy — no redirect here
 
   const { data, error } = await supabase
     .from('projects')
@@ -37,7 +34,7 @@ export default async function ProyectosPage({
     <>
       <Topbar title="Proyectos" />
       <div style={{ padding: '24px 28px', flex: 1 }}>
-        <ProjectsPanel initialData={projects} ownerEmail={user.email} filterCliente={cliente} />
+        <ProjectsPanel initialData={projects} ownerEmail={user?.email ?? ''} filterCliente={cliente} />
       </div>
     </>
   )

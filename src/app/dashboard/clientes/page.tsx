@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import { Topbar } from '@/components/layout/Topbar'
 import { ClientesPanel } from '@/components/panels/ClientesPanel'
 import type { Project } from '@/lib/types'
@@ -9,13 +8,7 @@ export const dynamic = 'force-dynamic'
 export default async function ClientesPage() {
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user?.email) {
-    redirect('/login')
-  }
+  // Auth enforced by proxy — no redirect here
 
   const { data, error } = await supabase
     .from('projects')

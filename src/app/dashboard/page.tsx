@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import { Topbar } from '@/components/layout/Topbar'
 import { TeamStatusPanel } from '@/components/panels/TeamStatusPanel'
 import type { TeamStatus } from '@/lib/types'
@@ -13,9 +12,7 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user?.email) {
-    redirect('/login')
-  }
+  // Auth enforced by proxy — no redirect here
 
   const { data: teamData, error } = await supabase
     .from('team_status')
@@ -51,7 +48,7 @@ export default async function DashboardPage() {
 
         <TeamStatusPanel
           initialData={teamStatus}
-          currentUserEmail={user.email}
+          currentUserEmail={user?.email ?? ''}
         />
       </div>
     </>
