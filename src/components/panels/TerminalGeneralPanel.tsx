@@ -1,6 +1,7 @@
 'use client'
 
 import { Terminal, FolderOpen, GitBranch, Cpu } from 'lucide-react'
+import { useTerminalStore } from '@/stores/terminalStore'
 
 interface Props {
   userEmail: string
@@ -8,7 +9,19 @@ interface Props {
 }
 
 export function TerminalGeneralPanel({ userEmail, linuxUser }: Props) {
-  const basePath = `/srv/maniacos/personal/${linuxUser}`
+  const basePath   = `/srv/maniacos/personal/${linuxUser}`
+  const openSession = useTerminalStore((s) => s.openSession)
+  const sessions    = useTerminalStore((s) => s.sessions)
+  const sessionId   = `personal-${linuxUser}`
+  const isOpen      = sessions.some((s) => s.id === sessionId)
+
+  function handleOpen() {
+    openSession({
+      id: sessionId,
+      clientSlug: 'personal',
+      label: `Personal — ${linuxUser}`,
+    })
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px 28px', gap: '20px' }}>
@@ -92,6 +105,32 @@ export function TerminalGeneralPanel({ userEmail, linuxUser }: Props) {
             <span style={{ display: 'inline-block', width: '8px', height: '14px', background: '#8A8F9E', animation: 'none' }}>▌</span>
           </div>
         </div>
+      </div>
+
+      {/* CTA */}
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <button
+          onClick={handleOpen}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '10px 22px',
+            background: 'var(--acc)', color: '#000',
+            border: 'none', borderRadius: 'var(--r8)',
+            fontSize: 'var(--text-sm)', fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'opacity 120ms',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+        >
+          <Terminal size={15} />
+          {isOpen ? '↓ Ir a terminal' : 'Abrir terminal'}
+        </button>
+        {isOpen && (
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--acc)' }}>
+            Terminal abierta — click para enfocar
+          </span>
+        )}
       </div>
 
       {/* Help row */}

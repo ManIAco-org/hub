@@ -1,6 +1,9 @@
 /* ─── Tailwind CSS v4 ─── */
 @import "tailwindcss";
 
+/* ─── xterm.js terminal styles ─── */
+@import "@xterm/xterm/css/xterm.css";
+
 /* ─── ManIAcos Brand Tokens ─── */
 @import "@maniaco/brand/tokens.css";
 

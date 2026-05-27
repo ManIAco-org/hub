@@ -9,8 +9,9 @@ import {
   FileText, Cpu, Settings, ExternalLink, Github, Save, Plus, Trash2,
 } from 'lucide-react'
 import type { Project } from '@/lib/types'
+import { useTerminalStore } from '@/stores/terminalStore'
 
-type Tab = 'resumen' | 'tareas' | 'archivos' | 'notas' | 'deploys' | 'mcp' | 'settings'
+type Tab = 'resumen' | 'tareas' | 'archivos' | 'notas' | 'deploys' | 'mcp' | 'terminal' | 'settings'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'resumen',   label: 'Resumen',     icon: <LayoutDashboard size={14} /> },
@@ -19,6 +20,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'notas',     label: 'Notas',       icon: <FileText size={14} /> },
   { id: 'deploys',   label: 'Deploys',     icon: <Rocket size={14} /> },
   { id: 'mcp',       label: 'MCP & Tokens',icon: <Cpu size={14} /> },
+  { id: 'terminal',  label: 'Terminal',    icon: <Terminal size={14} /> },
   { id: 'settings',  label: 'Settings',    icon: <Settings size={14} /> },
 ]
 
@@ -255,6 +257,114 @@ function TabMcp({ project }: { project: Project }) {
   )
 }
 
+// ─── Tab: Terminal ────────────────────────────────────────────────────────────
+function TabTerminal({ project }: { project: Project }) {
+  const openSession = useTerminalStore((s) => s.openSession)
+  const sessions    = useTerminalStore((s) => s.sessions)
+
+  // clientSlug from project: e.g. "RC Repuestos" → "rc-repuestos"
+  const clientSlug = project.client_name
+    ? project.client_name.toLowerCase().replace(/\s+/g, '-')
+    : 'personal'
+  const sessionId  = `project-${project.id}`
+  const isOpen     = sessions.some((s) => s.id === sessionId)
+
+  function handleOpen() {
+    openSession({
+      id: sessionId,
+      clientSlug,
+      projectId: project.id,
+      label: project.name,
+    })
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Info banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+        padding: '12px 16px',
+        background: 'var(--acc-d)',
+        border: '1px solid var(--acc-b)',
+        borderRadius: 'var(--r8)',
+      }}>
+        <Terminal size={16} color="var(--acc)" />
+        <div>
+          <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--t1)', marginBottom: '2px' }}>
+            Terminal del proyecto
+          </p>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)' }}>
+            Abre una sesión tmux en el Oracle ARM con Claude Code listo para usar.
+          </p>
+        </div>
+      </div>
+
+      {/* Path info */}
+      {project.server_path && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '10px 14px',
+          background: 'var(--s2)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--r8)',
+          fontSize: 'var(--text-xs)',
+          color: 'var(--t2)',
+        }}>
+          <Terminal size={13} color="var(--t3)" />
+          <span>Directorio:</span>
+          <code style={{ fontFamily: 'var(--mono)', color: 'var(--t1)', fontSize: '12px' }}>
+            {project.server_path}
+          </code>
+        </div>
+      )}
+
+      {/* CTA */}
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <button
+          onClick={handleOpen}
+          className="btn-primary"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--text-sm)', padding: '10px 20px' }}
+        >
+          <Terminal size={15} />
+          {isOpen ? '↓ Ir a terminal' : '💻 Trabajar'}
+        </button>
+        {isOpen && (
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--acc)' }}>
+            Terminal abierta — click para enfocar
+          </span>
+        )}
+      </div>
+
+      {/* Tips */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <p style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Comandos útiles
+        </p>
+        {[
+          { cmd: 'claude', desc: 'Abrir Claude Code' },
+          { cmd: 'git pull && npm run dev', desc: 'Actualizar y correr en local' },
+          { cmd: 'npm run build', desc: 'Build de producción' },
+        ].map(({ cmd, desc }) => (
+          <div
+            key={cmd}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '8px 12px',
+              background: 'var(--s2)', border: '1px solid var(--border)',
+              borderRadius: 'var(--r6)',
+            }}
+          >
+            <code style={{ fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--acc)', minWidth: '200px' }}>
+              {cmd}
+            </code>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)' }}>{desc}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Tab: Settings ───────────────────────────────────────────────────────────
 function TabSettings({ project }: { project: Project }) {
   const router = useRouter()
@@ -396,10 +506,11 @@ export function ProjectDetailPanel({ project }: { project: Project }) {
 
       {/* Tab content */}
       <div style={{ padding: '24px 28px', flex: 1, overflowY: 'auto' }}>
-        {activeTab === 'resumen'  && <TabResumen project={project} />}
-        {activeTab === 'notas'    && <TabNotas project={project} />}
-        {activeTab === 'mcp'      && <TabMcp project={project} />}
-        {activeTab === 'settings' && <TabSettings project={project} />}
+        {activeTab === 'resumen'   && <TabResumen project={project} />}
+        {activeTab === 'notas'     && <TabNotas project={project} />}
+        {activeTab === 'mcp'       && <TabMcp project={project} />}
+        {activeTab === 'terminal'  && <TabTerminal project={project} />}
+        {activeTab === 'settings'  && <TabSettings project={project} />}
         {activeTab === 'tareas' && (
           <TabPlaceholder
             label="Kanban de tareas"

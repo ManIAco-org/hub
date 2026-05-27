@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { TerminalPanelWrapper } from '@/components/Terminal/TerminalPanelWrapper'
 import type { ReactNode } from 'react'
 
 // Display names shown in sidebar footer — full name by email
@@ -45,6 +46,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       >
         {children}
       </main>
+
+      {/* Terminal panel — client component, persistent across routes */}
+      <TerminalPanelWrapper />
     </div>
   )
 }
