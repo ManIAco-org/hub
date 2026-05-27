@@ -15,6 +15,29 @@ const STATUS_LABELS: Record<MemberStatus, { label: string; color: string; pulse:
   away:   { label: 'Ausente',   color: 'var(--warn)', pulse: false },
 }
 
+const DISPLAY_NAMES: Record<string, string> = {
+  'franco.sanmartin@maniaco.online': 'Franco San Martín',
+  'lucho@maniaco.online': 'Luis Giannasi',
+  'noe@maniaco.online': 'Noelia Bottallo',
+}
+
+// Distinct cyan-ish accent per member for avatar bg
+const AVATAR_COLORS: Record<string, string> = {
+  'franco.sanmartin@maniaco.online': 'rgba(6,182,212,0.18)',
+  'lucho@maniaco.online': 'rgba(163,230,53,0.15)',
+  'noe@maniaco.online': 'rgba(245,158,11,0.15)',
+}
+const AVATAR_TEXT_COLORS: Record<string, string> = {
+  'franco.sanmartin@maniaco.online': 'var(--acc)',
+  'lucho@maniaco.online': 'var(--run)',
+  'noe@maniaco.online': 'var(--warn)',
+}
+
+function getInitials(email: string): string {
+  const name = DISPLAY_NAMES[email] ?? email.split('@')[0] ?? '?'
+  return name.split(' ').map(w => w[0] ?? '').join('').slice(0, 2).toUpperCase()
+}
+
 function StatusDot({ status }: { status: MemberStatus }) {
   const cfg = STATUS_LABELS[status]
   return (
@@ -139,23 +162,47 @@ function MemberCard({
         </span>
       )}
 
-      {/* Header: status dot + name */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-        <StatusDot status={member.status} />
-        <span style={{ fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-md)' }}>
-          {member.member_name}
-        </span>
-        <span
-          className="badge"
-          style={{
-            background: `rgba(${statusCfg.color === 'var(--run)' ? '163,230,53' : statusCfg.color === 'var(--warn)' ? '245,158,11' : '82,88,102'}, 0.12)`,
-            color: statusCfg.color,
-            border: `1px solid ${statusCfg.color === 'var(--t3)' ? 'var(--border)' : statusCfg.color}22`,
-            fontSize: 'var(--text-xs)',
-          }}
-        >
-          {statusCfg.label}
-        </span>
+      {/* Header: avatar + name + email + status */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' }}>
+        {/* Avatar */}
+        <div style={{
+          width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0,
+          background: AVATAR_COLORS[member.member_email] ?? 'var(--s3)',
+          color: AVATAR_TEXT_COLORS[member.member_email] ?? 'var(--t2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontWeight: 700, fontSize: '13px', fontFamily: 'var(--ui)',
+          position: 'relative',
+        }}>
+          {getInitials(member.member_email)}
+          {/* Status dot */}
+          <span style={{
+            position: 'absolute', bottom: '0px', right: '0px',
+            width: '10px', height: '10px', borderRadius: '50%',
+            background: statusCfg.color,
+            border: '2px solid var(--s2)',
+          }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-md)' }}>
+              {DISPLAY_NAMES[member.member_email] ?? member.member_name}
+            </span>
+            <span
+              className="badge"
+              style={{
+                background: `rgba(${statusCfg.color === 'var(--run)' ? '163,230,53' : statusCfg.color === 'var(--warn)' ? '245,158,11' : '82,88,102'}, 0.12)`,
+                color: statusCfg.color,
+                border: `1px solid ${statusCfg.color === 'var(--t3)' ? 'var(--border)' : statusCfg.color}22`,
+                fontSize: 'var(--text-xs)',
+              }}
+            >
+              {statusCfg.pulse && <span style={{ marginRight: '4px' }}>●</span>}{statusCfg.label}
+            </span>
+          </div>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)', marginTop: '1px' }}>
+            {member.member_email}
+          </p>
+        </div>
       </div>
 
       {!editing ? (
