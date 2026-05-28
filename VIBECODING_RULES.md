@@ -217,12 +217,33 @@ claude --version   # debe responder OK
 
 ### Usuarios actuales
 
-| User Linux | Cuenta Anthropic               | Plan |
-|------------|-------------------------------|------|
-| `franco`   | franco.sanmartin@maniaco.online | Max  |
-| `lucho`    | lucho@maniaco.online           | Pro  |
-| `noe`      | noe@maniaco.online             | Pro  |
+| User Linux | Cuenta Anthropic                  | Plan |
+|------------|-----------------------------------|------|
+| `franco`   | franco.sanmartin@maniaco.online   | Max  |
+| `lucho`    | luis.giannasi@maniaco.online      | Pro  |
+| `noe`      | noelia.bottallo@maniaco.online    | Pro  |
+
+> **`contacto@maniaco.online`** es cuenta institucional — **sin acceso a terminal**.
+> Si alguien intenta usarla verá: *"Cuenta institucional sin terminal. Usá tu mail personal @maniaco.online"*
+
+### Actualización automática del Claude CLI
+
+Claude Code CLI se actualiza **automáticamente cada lunes a las 04:00 UTC** (01:00 Argentina)
+via `/etc/cron.d/maniaco-claude-update`. El script corre:
+
+```bash
+sudo -u franco bash -lc 'npm install -g @anthropic-ai/claude-code'
+sudo -u lucho  bash -lc 'npm install -g @anthropic-ai/claude-code'
+sudo -u noe    bash -lc 'npm install -g @anthropic-ai/claude-code'
+```
+
+Logs en `/var/log/claude-update.log`. Para instalar el cron o forzar update manual:
+
+```bash
+sudo bash /srv/maniacos/hub/scripts/server/install-cron.sh        # instala ambos crons
+sudo bash /srv/maniacos/hub/scripts/server/update-claude-cli.sh   # forzar update ahora
+```
 
 ---
 
-*Versión 1.1.0 — Sprint 2. §11 agregado.*
+*Versión 1.2.0 — Sprint 2. Emails corregidos, auto-update claude CLI, terminal systemd.*

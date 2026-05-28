@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 import { Minus, Maximize2, ChevronDown, X } from 'lucide-react'
@@ -17,13 +17,14 @@ function SessionPane({
   clientSlug: string
   isActive: boolean
 }) {
-  const termRef = useRef<Terminal | null>(null)
-  const fitRef  = useRef<FitAddon | null>(null)
+  const termRef    = useRef<Terminal | null>(null)
+  const fitRef     = useRef<FitAddon | null>(null)
+  const [termReady, setTermReady] = useState(false)
   const { sendData, resize } = useTerminalSocket({ sessionId, clientSlug, terminalRef: termRef })
 
-  // Re-fit when becoming active
+  // Re-fit when becoming active (after xterm is ready)
   useEffect(() => {
-    if (isActive) {
+    if (isActive && termReady) {
       const fit = fitRef.current
       const term = termRef.current
       if (fit && term) {
@@ -33,15 +34,36 @@ function SessionPane({
         } catch { /* ignore */ }
       }
     }
-  }, [isActive, resize])
+  }, [isActive, termReady, resize])
 
   return (
-    <XtermInstance
-      onData={sendData}
-      terminalRef={termRef}
-      fitAddonRef={fitRef}
-      visible={isActive}
-    />
+    <>
+      {/* Loading skeleton — visible until xterm finishes initialising */}
+      {isActive && !termReady && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: '#0A0A0A', zIndex: 1,
+        }}>
+          <span style={{
+            fontFamily: '"Geist Mono", monospace',
+            fontSize: '13px',
+            color: '#06B6D4',
+            opacity: 0.8,
+            letterSpacing: '0.03em',
+          }}>
+            Iniciando terminal...
+          </span>
+        </div>
+      )}
+      <XtermInstance
+        onData={sendData}
+        terminalRef={termRef}
+        fitAddonRef={fitRef}
+        visible={isActive}
+        onReady={() => setTermReady(true)}
+      />
+    </>
   )
 }
 
@@ -92,6 +114,12 @@ export function TerminalPanel() {
 
   const [heightVh, setHeightVh]     = useState(40)
   const [isFullscreen, setFullscreen] = useState(false)
+  // Animate panel open: start at 0, jump to target after first paint
+  const [mounted, setMounted]       = useState(false)
+  useLayoutEffect(() => {
+    const t = setTimeout(() => setMounted(true), 16) // one frame
+    return () => clearTimeout(t)
+  }, [])
 
   // ── Drag-to-resize ────────────────────────────────────────────────────────
   const dragging       = useRef(false)
@@ -144,8 +172,9 @@ export function TerminalPanel() {
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        // Smooth fullscreen toggle
-        transition: isFullscreen ? 'height 150ms ease' : 'none',
+        // Slide up on first open; smooth fullscreen toggle
+        transform: mounted ? 'translateY(0)' : 'translateY(100%)',
+        transition: 'transform 200ms ease, height 150ms ease',
       }}
     >
       {/* ── Drag handle (not in fullscreen) ─────────────────────────────── */}

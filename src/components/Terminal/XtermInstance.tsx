@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 
@@ -34,13 +34,19 @@ interface Props {
   terminalRef: React.MutableRefObject<Terminal | null>
   fitAddonRef: React.MutableRefObject<FitAddon | null>
   visible: boolean
+  onReady?: () => void
 }
 
-export function XtermInstance({ onData, terminalRef, fitAddonRef, visible }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  // Store the current onData callback in a ref so we don't re-init on change
-  const onDataRef = useRef(onData)
-  onDataRef.current = onData
+export function XtermInstance({ onData, terminalRef, fitAddonRef, visible, onReady }: Props) {
+  const containerRef   = useRef<HTMLDivElement>(null)
+  const onDataRef      = useRef(onData)
+  const onReadyRef     = useRef(onReady)
+  onDataRef.current    = onData
+  onReadyRef.current   = onReady
+
+  // Track whether we've received first output — triggers fade-in
+  const [hasOutput, setHasOutput] = useState(false)
+  const hasOutputRef = useRef(false)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -63,9 +69,10 @@ export function XtermInstance({ onData, terminalRef, fitAddonRef, visible }: Pro
         lineHeight: 1.4,
         cursorStyle: 'block',
         cursorBlink: true,
-        scrollback: 5_000,
+        scrollback: 10_000,          // more history
         allowTransparency: false,
-        convertEol: true,
+        allowProposedApi: true,      // required for some addons + future features
+        convertEol: true,            // CRLF → LF normalisation
       })
 
       const fitAddon = new FitAddon()
@@ -73,16 +80,45 @@ export function XtermInstance({ onData, terminalRef, fitAddonRef, visible }: Pro
       term.loadAddon(new WebLinksAddon())
 
       term.open(containerRef.current)
-      try { fitAddon.fit() } catch { /* ignore sizing errors before layout */ }
+
+      // Delay first fit by 50ms so DOM has settled after open()
+      const fitTimer = setTimeout(() => {
+        if (!disposed) {
+          try { fitAddon.fit() } catch { /* ignore */ }
+          onReadyRef.current?.()
+        }
+      }, 50)
+      disposables.push({ dispose: () => clearTimeout(fitTimer) })
 
       terminalRef.current = term
       fitAddonRef.current = fitAddon
 
-      disposables.push(term.onData((d) => onDataRef.current(d)))
+      // Track first output for fade-in
+      disposables.push(term.onData((d) => {
+        onDataRef.current(d)
+        if (!hasOutputRef.current) {
+          hasOutputRef.current = true
+          setHasOutput(true)
+        }
+      }))
+
+      // Also trigger fade-in on first write from server (onData is input; we need
+      // to detect server writes by hooking into the terminal's write pipeline via
+      // a custom addon approach — simplest proxy: flip on first visible char in buffer)
+      const writeOrig = term.write.bind(term)
+      ;(term as Terminal & { write: typeof term.write }).write = (data, cb) => {
+        if (!hasOutputRef.current && data && (typeof data === 'string' ? data.length : data.byteLength) > 0) {
+          hasOutputRef.current = true
+          setHasOutput(true)
+        }
+        return writeOrig(data as Parameters<typeof term.write>[0], cb)
+      }
 
       // Responsive re-fit via ResizeObserver
       const ro = new ResizeObserver(() => {
-        try { fitAddon.fit() } catch { /* ignore */ }
+        if (!disposed) {
+          try { fitAddon.fit() } catch { /* ignore */ }
+        }
       })
       ro.observe(containerRef.current!)
       disposables.push({ dispose: () => ro.disconnect() })
@@ -107,8 +143,10 @@ export function XtermInstance({ onData, terminalRef, fitAddonRef, visible }: Pro
         background: '#0A0A0A',
         overflow: 'hidden',
         // Keep all terminals in the DOM for WS continuity; hide inactive ones
-        opacity: visible ? 1 : 0,
+        opacity: visible ? (hasOutput ? 1 : 0.6) : 0,
         pointerEvents: visible ? 'auto' : 'none',
+        // Smooth transitions: appear when becoming active, fade-in on first output
+        transition: 'opacity 200ms ease',
       }}
     />
   )
