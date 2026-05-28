@@ -73,7 +73,15 @@ export function connectTerminal(opts: ConnectOptions): TerminalSocket {
               cols: opts.cols,
               rows: opts.rows,
             }
-            console.debug('[terminal] → auth', { clientSlug: authPayload.clientSlug, cols: authPayload.cols, rows: authPayload.rows })
+            // Diagnostic log — visible in browser DevTools Console
+            console.log('[WS-AUTH] token len:', opts.jwt?.length,
+              'clientSlug:', JSON.stringify(opts.clientSlug),
+              'expires_at:', (() => {
+                try {
+                  const payload = JSON.parse(atob(opts.jwt.split('.')[1]!))
+                  return payload.exp ? new Date(payload.exp * 1000).toISOString() : 'unknown'
+                } catch { return 'parse-error' }
+              })())
             ws!.send(JSON.stringify(authPayload))
             break
           }

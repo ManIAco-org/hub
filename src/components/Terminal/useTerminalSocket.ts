@@ -61,6 +61,14 @@ export function useTerminalSocket({ sessionId, clientSlug, terminalRef }: Option
       terminalRef.current?.write('\x1b[36m[ Conectando... ]\x1b[0m\r\n')
       updateStatus(sessionId, 'connecting')
 
+      // Decode JWT exp for diagnostics
+      try {
+        const payload = JSON.parse(atob(jwt.split('.')[1]!))
+        console.log('[terminal] connecting — session:', sessionId, 'clientSlug:', JSON.stringify(clientSlug), 'jwt.exp:', payload.exp ? new Date(payload.exp * 1000).toISOString() : 'no-exp', 'jwt.sub:', payload.sub)
+      } catch {
+        console.log('[terminal] connecting — session:', sessionId, 'clientSlug:', JSON.stringify(clientSlug), '(could not decode jwt)')
+      }
+
       const term = terminalRef.current
       socketRef.current = connectTerminal({
         jwt,

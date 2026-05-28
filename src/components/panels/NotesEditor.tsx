@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useCreateBlockNote } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/mantine'
+import { es } from '@blocknote/core/locales'
 import '@blocknote/mantine/style.css'
 
 interface Props {
@@ -11,7 +12,10 @@ interface Props {
 }
 
 export function NotesEditor({ content, onChange }: Props) {
-  const editor = useCreateBlockNote()
+  const editor = useCreateBlockNote({
+    dictionary: es,
+  })
+
   const initialized = useRef(false)
   const lastContent = useRef(content)
 
@@ -52,40 +56,90 @@ export function NotesEditor({ content, onChange }: Props) {
         width: '100%',
         maxHeight: '50vh',
         overflowY: 'auto',
-        padding: '24px',
         borderRadius: '12px',
         background: 'var(--s1)',
         border: '1px solid var(--border)',
         boxSizing: 'border-box',
-        // Blocknote theme overrides via CSS custom properties
-        '--bn-font-family': "'Instrument Sans', 'Inter', system-ui, sans-serif",
-        '--bn-font-size': '14px',
-        '--bn-colors-editor-background': 'transparent',
-        '--bn-colors-editor-text': 'var(--t1)',
-        '--bn-colors-menu-background': 'var(--s2)',
-        '--bn-colors-tooltip-background': 'var(--s3)',
-        '--bn-colors-hovered-background': 'var(--s3)',
-        '--bn-colors-selected-background': 'var(--acc-d)',
-        '--bn-colors-border': 'var(--border)',
-        '--bn-colors-shadow': 'none',
-        '--bn-border-radius': '8px',
-      } as React.CSSProperties}
+      }}
     >
       <style>{`
-        .bn-editor { font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif !important; }
+        /* ── Editor body ── */
+        .bn-editor {
+          font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif !important;
+          padding: 20px 24px !important;
+        }
+        .bn-editor p { margin: 0; line-height: 1.65; color: var(--t1); }
+        .bn-editor h1, .bn-editor h2, .bn-editor h3 {
+          font-family: 'Instrument Sans', sans-serif;
+          font-weight: 700;
+          color: var(--t1);
+        }
+
+        /* ── Code blocks ── */
         .bn-editor code,
         .bn-editor pre,
-        .bn-editor .bn-inline-content code { font-family: var(--mono) !important; font-size: 12px !important; }
-        .bn-editor pre { background: var(--s2) !important; border-radius: 8px !important; padding: 12px 16px !important; }
-        .bn-editor [class*="blockOuter"] { margin: 2px 0; }
-        .bn-editor p { margin: 0; line-height: 1.65; }
-        .bn-editor h1, .bn-editor h2, .bn-editor h3 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; color: var(--t1); }
+        .bn-editor .bn-inline-content code {
+          font-family: var(--mono) !important;
+          font-size: 12px !important;
+        }
+        .bn-editor pre {
+          background: var(--s2) !important;
+          border-radius: 8px !important;
+          padding: 12px 16px !important;
+        }
+
+        /* ── Placeholder ── */
+        .bn-editor [data-placeholder]::before {
+          color: var(--t3) !important;
+          font-style: normal !important;
+        }
+
+        /* ── Slash menu ── */
+        .bn-suggestion-menu {
+          background: var(--s2) !important;
+          border: 1px solid var(--acc-b) !important;
+          border-radius: 10px !important;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
+        }
+        .bn-suggestion-menu-item {
+          border-radius: 6px !important;
+          color: var(--t1) !important;
+        }
+        .bn-suggestion-menu-item:hover,
+        .bn-suggestion-menu-item[data-selected="true"] {
+          background: var(--acc-d) !important;
+          color: var(--acc) !important;
+        }
+        .bn-suggestion-menu-item-title { font-weight: 600 !important; }
+        .bn-suggestion-menu-item-subtitle { color: var(--t3) !important; font-size: 11px !important; }
+
+        /* ── Formatting toolbar ── */
+        .bn-toolbar {
+          background: var(--s2) !important;
+          border: 1px solid var(--border) !important;
+          border-radius: 8px !important;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.3) !important;
+        }
+        .bn-toolbar button {
+          color: var(--t2) !important;
+          border-radius: 4px !important;
+        }
+        .bn-toolbar button:hover { background: var(--s3) !important; color: var(--t1) !important; }
+        .bn-toolbar button[data-selected="true"],
+        .bn-toolbar button[aria-checked="true"] {
+          background: var(--acc-d) !important;
+          color: var(--acc) !important;
+        }
+
+        /* ── Side menu (drag handle) ── */
+        .bn-side-menu { opacity: 0.4; transition: opacity 150ms; }
+        .bn-side-menu:hover { opacity: 1; }
       `}</style>
+
       <BlockNoteView
         editor={editor}
         onChange={handleChange}
         theme="dark"
-        data-theming-css-variables-demo
       />
     </div>
   )
