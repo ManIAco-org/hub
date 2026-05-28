@@ -128,3 +128,14 @@ body {
 .rt-flash {
   animation: rt-flash 800ms ease-out;
 }
+
+/* ─── Notes panel: reveal action buttons on row hover ─── */
+.note-row:hover .note-action-btn {
+  opacity: 1 !important;
+}
+.note-action-btn {
+  transition: opacity 120ms, color 120ms;
+}
+.note-action-btn:hover {
+  color: var(--acc) !important;
+}

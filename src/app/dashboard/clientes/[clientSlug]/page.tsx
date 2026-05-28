@@ -15,7 +15,14 @@ export default async function ClientDetailPage({
   const { clientSlug } = await params
   const supabase = await createClient()
 
-  // Fetch all projects and filter by slug match on client_name
+  // Fetch client by slug from clients table
+  const { data: clientRow } = await supabase
+    .from('clients')
+    .select('id, name')
+    .eq('slug', clientSlug)
+    .single()
+
+  // Fetch projects linked to this client
   const { data, error } = await supabase
     .from('projects')
     .select('*')
@@ -27,16 +34,21 @@ export default async function ClientDetailPage({
 
   const allProjects: Project[] = (data ?? []) as Project[]
 
-  // Match by derived slug from client_name (no clients table needed)
-  const clientProjects = allProjects.filter(
-    (p) => toSlug(p.client_name) === clientSlug
-  )
+  // Match by client_id if available, fallback to slug match on client_name
+  const clientProjects = clientRow
+    ? allProjects.filter((p) => p.client_id === clientRow.id || toSlug(p.client_name) === clientSlug)
+    : allProjects.filter((p) => toSlug(p.client_name) === clientSlug)
 
-  if (clientProjects.length === 0) {
+  if (!clientRow && clientProjects.length === 0) {
     notFound()
   }
 
-  const clientName = clientProjects[0]!.client_name
+  const clientId   = clientRow?.id ?? clientProjects[0]?.client_id ?? ''
+  const clientName = clientRow?.name ?? clientProjects[0]?.client_name ?? clientSlug
+
+  // Get current user for createdBy
+  const { data: { user } } = await supabase.auth.getUser()
+  const createdBy = user?.email ?? 'franco.sanmartin@maniaco.online'
 
   return (
     <>
@@ -46,9 +58,11 @@ export default async function ClientDetailPage({
       />
       <div style={{ padding: '24px 28px', flex: 1 }}>
         <ClientDetailPanel
+          clientId={clientId}
           clientName={clientName}
           clientSlug={clientSlug}
           projects={clientProjects}
+          createdBy={createdBy}
         />
       </div>
     </>

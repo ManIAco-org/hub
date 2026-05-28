@@ -73,6 +73,17 @@ export interface AgentRun {
   created_at: string
 }
 
+export interface Note {
+  id: string
+  title: string
+  content_md: string
+  client_id: string | null
+  project_id: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
 // Panel nav items
 export interface NavItem {
   id: string

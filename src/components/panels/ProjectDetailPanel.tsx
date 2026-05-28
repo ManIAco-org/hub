@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { Project } from '@/lib/types'
 import { useTerminalStore } from '@/stores/terminalStore'
+import { NotesPanel } from './NotesPanel'
 
 type Tab = 'resumen' | 'tareas' | 'archivos' | 'notas' | 'deploys' | 'mcp' | 'terminal' | 'settings'
 
@@ -101,51 +102,11 @@ function TabPlaceholder({ label, icon, note }: { label: string; icon: React.Reac
 
 // ─── Tab: Notas ──────────────────────────────────────────────────────────────
 function TabNotas({ project }: { project: Project }) {
-  const supabase = createClient()
-  const [notes, setNotes] = useState(project.notes_md ?? '')
-  const [saved, setSaved] = useState(false)
-  const [isPending, startTransition] = useTransition()
-
-  function handleSave() {
-    startTransition(async () => {
-      const { error } = await supabase.from('projects').update({ notes_md: notes }).eq('id', project.id)
-      if (error) { toast.error('Error al guardar notas') } else { toast.success('Notas guardadas') }
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    })
-  }
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', height: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t3)' }}>
-          Markdown · se guarda en la DB
-        </p>
-        <button
-          onClick={handleSave}
-          disabled={isPending}
-          className="btn-primary"
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', padding: '6px 14px', opacity: isPending ? 0.7 : 1 }}
-        >
-          <Save size={13} />
-          {saved ? '¡Guardado!' : isPending ? 'Guardando...' : 'Guardar'}
-        </button>
-      </div>
-      <textarea
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        className="input"
-        style={{
-          minHeight: '400px',
-          fontFamily: 'var(--mono)',
-          fontSize: '13px',
-          lineHeight: 1.6,
-          resize: 'vertical',
-          whiteSpace: 'pre',
-        }}
-        placeholder="# Notas del proyecto&#10;&#10;Escribí acá..."
-      />
-    </div>
+    <NotesPanel
+      projectId={project.id}
+      createdBy={project.owner_email}
+    />
   )
 }
 

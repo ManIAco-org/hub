@@ -3,8 +3,8 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { FolderKanban, ExternalLink, Github, Monitor } from 'lucide-react'
-import { toSlug } from '@/lib/utils'
 import type { Project, ProjectStatus } from '@/lib/types'
+import { NotesPanel } from './NotesPanel'
 
 const STATUS_CONFIG: Record<ProjectStatus, { label: string; className: string }> = {
   active: { label: 'Activo',  className: 'badge badge-acc' },
@@ -23,12 +23,14 @@ function formatRelativeTime(iso: string): string {
 }
 
 interface Props {
+  clientId: string
   clientName: string
   clientSlug: string
   projects: Project[]
+  createdBy?: string
 }
 
-export function ClientDetailPanel({ clientName, projects }: Props) {
+export function ClientDetailPanel({ clientId, clientName, projects, createdBy = 'franco.sanmartin@maniaco.online' }: Props) {
   const router = useRouter()
   const [hovered, setHovered] = useState<string | null>(null)
 
@@ -210,23 +212,15 @@ export function ClientDetailPanel({ clientName, projects }: Props) {
         )}
       </div>
 
-      {/* Notes placeholder — enabled after migration applied */}
-      <div
-        style={{
-          background: 'var(--s2)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--r12)',
-          padding: '20px',
-        }}
-      >
-        <h3 style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>
-          Notas del cliente
+      {/* Notes section */}
+      <div>
+        <h3 style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '16px' }}>
+          Notas
         </h3>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t3)' }}>
-          Editor de notas disponible tras aplicar la migración{' '}
-          <code style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>20260527000004_clients_schema.sql</code>{' '}
-          en Supabase Dashboard.
-        </p>
+        <NotesPanel
+          clientId={clientId}
+          createdBy={createdBy}
+        />
       </div>
     </div>
   )
