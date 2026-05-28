@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import {
-  Shield, Github, Globe, Cpu, Cloud, Zap, ExternalLink, ChevronRight,
+  Shield, Github, Globe, Cpu, Cloud, Zap, ExternalLink, ChevronRight, Server, KeyRound,
 } from 'lucide-react'
 
 interface TokenSection {
@@ -187,6 +187,69 @@ export function ConfiguracionPanel() {
               )}
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Modelo de Auth — Claude CLI por user */}
+      <section>
+        <h3 style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
+          Modelo de autenticación Claude
+        </h3>
+        <div style={{
+          background: 'var(--s2)', border: '1px solid var(--border)',
+          borderRadius: 'var(--r8)', overflow: 'hidden',
+        }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--bsub)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <KeyRound size={14} color="var(--acc)" />
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t2)', lineHeight: 1.5 }}>
+              Cada miembro tiene su cuenta Anthropic propia autenticada en el servidor Oracle
+              vía <code style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>claude /login</code>.
+              Solo lectura — la auth se gestiona por SSH, no desde el Hub.
+            </p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {[
+              { user: 'franco', email: 'franco.sanmartin@maniaco.online', plan: 'Max', status: 'ok' },
+              { user: 'lucho',  email: 'lucho@maniaco.online',            plan: 'Pro', status: 'ok' },
+              { user: 'noe',    email: 'noe@maniaco.online',              plan: 'Pro', status: 'ok' },
+            ].map((m, i) => (
+              <div key={m.user} style={{
+                display: 'flex', alignItems: 'center', gap: '14px',
+                padding: '12px 16px',
+                borderTop: i > 0 ? '1px solid var(--bsub)' : 'none',
+              }}>
+                <div style={{
+                  width: '32px', height: '32px', borderRadius: '50%',
+                  background: 'var(--acc-d)', border: '1px solid var(--acc-b)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <Server size={14} color="var(--acc)" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <code style={{ fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--t1)', fontWeight: 600 }}>
+                      {m.user}@oracle
+                    </code>
+                    <span style={{ fontSize: '11px', color: 'var(--t3)' }}>→</span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--t2)' }}>{m.email}</span>
+                  </div>
+                </div>
+                <span className="badge badge-ok" style={{ fontSize: '10px' }}>
+                  ✓ {m.plan} autenticado
+                </span>
+              </div>
+            ))}
+          </div>
+          <div style={{
+            padding: '10px 16px', borderTop: '1px solid var(--bsub)',
+            background: 'var(--s1)',
+            display: 'flex', alignItems: 'center', gap: '6px',
+          }}>
+            <Shield size={11} color="var(--t3)" />
+            <span style={{ fontSize: '11px', color: 'var(--t3)' }}>
+              API key dedicada para agentes 24/7 en Vaultwarden · jamás para vibecoding humano
+            </span>
+          </div>
         </div>
       </section>
 

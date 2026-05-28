@@ -169,6 +169,60 @@ npm run type-check   # TypeScript strict — debe pasar limpio
 # npm run lint       # ESLint (opcional en dev, obligatorio antes de PR)
 ```
 
+## 11. Modelo de Autenticación Claude
+
+### Cuentas por miembro
+
+- Cada miembro tiene **SU cuenta Anthropic personal** con su mail `@maniaco.online`
+  (Pro $20 o Max $100 — decisión personal/empresa)
+- Cada miembro hace `claude /login` **UNA VEZ** desde su user del servidor Oracle
+- El token queda en `~/.config/claude/credentials.json` del user Linux específico
+- Cuando el Hub abre terminal embebida → spawnea `claude` como ese user Linux → usa la cuenta correspondiente
+
+### Vibecoding humano (Pro/Max vía Claude Code CLI)
+
+- Mediante terminal del Hub (con la cuenta del user autenticado en el server)
+- Mediante laptop personal de cada miembro (misma cuenta, multi-device)
+- **LEGAL:** misma persona usa SU cuenta desde N dispositivos
+- **ILEGAL:** dos personas usan LA MISMA cuenta (account sharing)
+
+### Agents 24/7 automáticos (API key dedicada)
+
+- Anthropic Console org **"ManIAcos"** con API key `"agents-server"`
+- Spending limit configurado (default $150/mes)
+- Usada **exclusivamente** por procesos automáticos del server:
+  - Lead Scraper, Enrichment Agent, Writer Agent
+  - Reply Handler, Sender Agent, futuros agentes
+- **JAMÁS** usada para vibecoding humano interactivo
+
+### Setup de nueva persona
+
+```bash
+# 1. Crear user Linux en server (como root)
+useradd -m -s /bin/bash <nombre>
+passwd <nombre>
+
+# 2. La persona accede vía SSH a SU user
+ssh <nombre>@oracle.maniaco.online
+
+# 3. Instalar y loguear Claude Code (una sola vez)
+claude /login
+# → abre browser → login con cuenta @maniaco.online
+
+# 4. Verificar
+claude --version   # debe responder OK
+
+# 5. Listo — cuando abra terminal del Hub como ese user, Claude ya está autenticado
+```
+
+### Usuarios actuales
+
+| User Linux | Cuenta Anthropic               | Plan |
+|------------|-------------------------------|------|
+| `franco`   | franco.sanmartin@maniaco.online | Max  |
+| `lucho`    | lucho@maniaco.online           | Pro  |
+| `noe`      | noe@maniaco.online             | Pro  |
+
 ---
 
-*Versión 1.0.0 — Sprint 1. Actualizar con cada sprint.*
+*Versión 1.1.0 — Sprint 2. §11 agregado.*

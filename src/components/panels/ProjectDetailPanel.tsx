@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, ListTodo, FileCode2, Terminal, Rocket,
-  FileText, Cpu, Settings, ExternalLink, Github, Save, Plus, Trash2,
+  FileText, Cpu, Settings, ExternalLink, Github, Save, Plus, Trash2, Shield,
 } from 'lucide-react'
 import type { Project } from '@/lib/types'
 import { useTerminalStore } from '@/stores/terminalStore'
@@ -339,7 +339,6 @@ function TabSettings({ project }: { project: Project }) {
     description: project.description ?? '',
     vercel_url: project.vercel_url ?? '',
     github_url: project.github_url ?? '',
-    server_path: project.server_path ?? '',
     status: project.status,
   })
   const [saving, setSaving] = useState(false)
@@ -356,7 +355,6 @@ function TabSettings({ project }: { project: Project }) {
           description: form.description.trim() || null,
           vercel_url: form.vercel_url.trim() || null,
           github_url: form.github_url.trim() || null,
-          server_path: form.server_path.trim() || null,
           status: form.status,
         })
         .eq('id', project.id)
@@ -368,11 +366,10 @@ function TabSettings({ project }: { project: Project }) {
   }
 
   const fields: { key: keyof typeof form; label: string; placeholder: string; type?: string }[] = [
-    { key: 'name',        label: 'Nombre',         placeholder: 'RC Repuestos' },
-    { key: 'description', label: 'Descripción',     placeholder: 'Breve descripción' },
-    { key: 'vercel_url',  label: 'URL Vercel',      placeholder: 'https://...', type: 'url' },
-    { key: 'github_url',  label: 'URL GitHub',      placeholder: 'https://github.com/...', type: 'url' },
-    { key: 'server_path', label: 'Ruta en Oracle',  placeholder: '/srv/maniacos/rc-repuestos' },
+    { key: 'name',        label: 'Nombre',      placeholder: 'RC Repuestos' },
+    { key: 'description', label: 'Descripción', placeholder: 'Breve descripción' },
+    { key: 'vercel_url',  label: 'URL Vercel',  placeholder: 'https://...', type: 'url' },
+    { key: 'github_url',  label: 'URL GitHub',  placeholder: 'https://github.com/...', type: 'url' },
   ]
 
   return (
@@ -417,6 +414,52 @@ function TabSettings({ project }: { project: Project }) {
         <Save size={14} />
         {saved ? '¡Guardado!' : saving ? 'Guardando...' : 'Guardar cambios'}
       </button>
+
+      {/* ── Campos gestionados por el sistema ─────────────────────────────── */}
+      <div style={{
+        marginTop: '8px', padding: '14px 16px',
+        background: 'var(--s2)', border: '1px solid var(--border)',
+        borderRadius: 'var(--r8)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+          <Shield size={13} color="var(--t3)" />
+          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Gestionado por el sistema
+          </span>
+        </div>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)', marginBottom: '12px', lineHeight: 1.5 }}>
+          Estos valores se actualizan automáticamente. No son editables desde el Hub para prevenir inconsistencias en el servidor.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <ManagedField
+            label="Ruta Oracle"
+            value={project.server_path ?? '(se asignará al guardar)'}
+            hint="✓ Aislado en server"
+          />
+          <ManagedField
+            label="Slug"
+            value={project.server_path ? project.server_path.replace('/srv/maniacos/', '') : '—'}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ManagedField({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)', minWidth: '90px' }}>{label}</span>
+      <code style={{
+        flex: 1, fontFamily: 'var(--mono)', fontSize: '11px',
+        color: 'var(--t2)', background: 'var(--s3)',
+        padding: '4px 8px', borderRadius: 'var(--r4)', border: '1px solid var(--border)',
+      }}>
+        {value}
+      </code>
+      {hint && (
+        <span style={{ fontSize: '11px', color: 'var(--ok)', whiteSpace: 'nowrap' }}>{hint}</span>
+      )}
     </div>
   )
 }

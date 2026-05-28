@@ -12,6 +12,28 @@ interface Options {
   terminalRef: React.MutableRefObject<Terminal | null>
 }
 
+/** Get a fresh JWT — refreshes proactively if expiring within 5 min. */
+async function getFreshJwt(): Promise<string | null> {
+  const supabase = createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return null
+
+  const expiresAt = session.expires_at ?? 0
+  const nowSecs   = Math.floor(Date.now() / 1000)
+
+  if (expiresAt - nowSecs < 5 * 60) {
+    console.debug('[terminal] token expiring soon, refreshing...')
+    const { data: refreshed, error } = await supabase.auth.refreshSession()
+    if (error || !refreshed.session) {
+      console.error('[terminal] session refresh failed:', error?.message)
+      return null
+    }
+    return refreshed.session.access_token
+  }
+
+  return session.access_token
+}
+
 export function useTerminalSocket({ sessionId, clientSlug, terminalRef }: Options) {
   const socketRef = useRef<TerminalSocket | null>(null)
   const updateStatus = useTerminalStore((s) => s.updateStatus)
@@ -21,9 +43,11 @@ export function useTerminalSocket({ sessionId, clientSlug, terminalRef }: Option
   activeSessionIdRef.current = activeSessionId
 
   const connect = useCallback(async () => {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session?.access_token) {
+    const jwt = await getFreshJwt()
+
+    if (!jwt) {
+      const msg = 'Sesión expirada — recargá la página para continuar'
+      terminalRef.current?.writeln(`\r\n\x1b[31m[${msg}]\x1b[0m`)
       updateStatus(sessionId, 'error')
       return
     }
@@ -33,13 +57,12 @@ export function useTerminalSocket({ sessionId, clientSlug, terminalRef }: Option
 
     const term = terminalRef.current
     socketRef.current = connectTerminal({
-      jwt: session.access_token,
+      jwt,
       clientSlug,
       cols: term?.cols ?? 80,
       rows: term?.rows ?? 24,
       onData(data) {
         terminalRef.current?.write(data)
-        // Badge unread on inactive sessions
         if (activeSessionIdRef.current !== sessionId) {
           incrementUnread(sessionId)
         }
@@ -67,14 +90,25 @@ export function useTerminalSocket({ sessionId, clientSlug, terminalRef }: Option
   }, [])
 
   useEffect(() => {
-    // Wait a tick so XtermInstance can finish async init before we connect
+    // Give XtermInstance ~200ms to finish async dynamic import init
     const t = setTimeout(() => { connect() }, 200)
+
+    // Re-connect on token refresh (Supabase emits TOKEN_REFRESHED)
+    const supabase = createClient()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'TOKEN_REFRESHED') {
+        console.debug('[terminal] token refreshed, reconnecting session', sessionId)
+        connect()
+      }
+    })
+
     return () => {
       clearTimeout(t)
+      subscription.unsubscribe()
       socketRef.current?.close()
       socketRef.current = null
     }
-  }, [connect])
+  }, [connect, sessionId])
 
   return { sendData, resize, reconnect: connect }
 }
