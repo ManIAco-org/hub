@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -220,73 +220,34 @@ function TabMcp({ project }: { project: Project }) {
 
 // ─── Tab: Terminal ────────────────────────────────────────────────────────────
 function TabTerminal({ project }: { project: Project }) {
-  const sessions    = useTerminalStore((s) => s.sessions)
-
-  // server_path → derive clientSlug: /srv/maniacos/rc-repuestos → "rc-repuestos"
-  // If no server_path, derive from project name as fallback
-  const clientSlug: string = project.server_path
-    ? project.server_path.replace('/srv/maniacos/', '').split('/')[0] ?? project.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-    : project.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-  const sessionId  = `project-${project.id}`
-  const isOpen     = sessions.some((s) => s.id === sessionId)
-
   const openStore = useTerminalStore((s) => s.openSession)
   const setOpen   = useTerminalStore((s) => s.setOpen)
   const setMin    = useTerminalStore((s) => s.setMinimized)
+  const sessions  = useTerminalStore((s) => s.sessions)
 
-  function handleOpen() {
-    if (isOpen) { setOpen(true); setMin(false); return }
-    openStore({
-      id: sessionId,
-      clientSlug,
-      projectId: project.id,
-      label: project.name,
-    })
-  }
+  const clientSlug: string = project.server_path
+    ? project.server_path.replace('/srv/maniacos/', '').split('/')[0] ?? project.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
+    : project.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
+  const sessionId = `project-${project.id}`
+
+  // Auto-open on mount — no button needed
+  useEffect(() => {
+    const isOpen = sessions.some((s) => s.id === sessionId)
+    if (isOpen) {
+      setOpen(true)
+      setMin(false)
+    } else {
+      openStore({ id: sessionId, clientSlug, projectId: project.id, label: project.name })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 20px', gap: '24px', textAlign: 'center' }}>
-      {/* Icon */}
-      <div style={{
-        width: '64px', height: '64px', borderRadius: '18px',
-        background: 'var(--acc-d)', border: '1px solid var(--acc-b)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Terminal size={28} color="var(--acc)" />
-      </div>
-
-      {/* Heading */}
-      <div style={{ maxWidth: '420px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <h3 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--t1)', margin: 0 }}>
-          Terminal
-        </h3>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t3)', lineHeight: 1.6, margin: 0 }}>
-          Abrí Claude Code conectado al repo del cliente con MCPs configurados.
-          {project.server_path && (
-            <> Directorio:{' '}
-              <code style={{ fontFamily: 'var(--mono)', color: 'var(--t2)', fontSize: '11px' }}>
-                {project.server_path}
-              </code>
-            </>
-          )}
-        </p>
-      </div>
-
-      {/* CTA */}
-      <button
-        onClick={handleOpen}
-        className="btn-primary"
-        style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: 'var(--text-base)', padding: '13px 28px' }}
-      >
-        <Terminal size={17} />
-        {isOpen ? '↓ Ir a terminal' : '💻 Trabajar'}
-      </button>
-
-      {isOpen && (
-        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--acc)' }}>
-          Terminal abierta — click para enfocar
-        </span>
-      )}
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '48px 20px', color: 'var(--t3)',
+      fontFamily: 'var(--mono)', fontSize: 'var(--text-sm)',
+    }}>
+      Abriendo terminal...
     </div>
   )
 }

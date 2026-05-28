@@ -3,24 +3,94 @@
 import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
-import { Minus, Maximize2, ChevronDown, X } from 'lucide-react'
+import { Minus, Maximize2, ChevronDown, X, RotateCw } from 'lucide-react'
 import { useTerminalStore } from '@/stores/terminalStore'
+import type { TerminalSession } from '@/stores/terminalStore'
 import { TerminalTab } from './TerminalTab'
 import { XtermInstance } from './XtermInstance'
 import { useTerminalSocket } from './useTerminalSocket'
 
+// ── Status bar (32 px, shows cwd / git branch / claude status / last activity) ──
+function StatusBar({ session }: { session: TerminalSession }) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 15_000)
+    return () => clearInterval(t)
+  }, [])
+
+  const elapsed = session.lastActivityAt
+    ? Math.floor((Date.now() - session.lastActivityAt) / 60_000)
+    : null
+
+  const statusColor =
+    session.status === 'connected'    ? '#A3E635'
+    : session.status === 'connecting' ? '#06B6D4'
+    : session.status === 'error'      ? '#EF4444'
+    : '#525866'
+
+  const statusLabel =
+    session.status === 'connected'    ? '● Claude activo'
+    : session.status === 'connecting' ? '● Conectando...'
+    : session.status === 'error'      ? '✗ Error'
+    : '○ Desconectado'
+
+  return (
+    <div
+      style={{
+        height: '32px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '16px',
+        padding: '0 12px',
+        background: '#0D0D0D',
+        borderTop: '1px solid #1C1C1C',
+        flexShrink: 0,
+        fontFamily: '"Geist Mono", monospace',
+        fontSize: '11px',
+        color: '#525866',
+        userSelect: 'none',
+        overflow: 'hidden',
+      }}
+    >
+      {session.cwd && (
+        <span
+          title={session.cwd}
+          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}
+        >
+          📁 {session.cwd.split('/').slice(-2).join('/')}
+        </span>
+      )}
+      {session.gitBranch && session.gitBranch !== 'HEAD' && (
+        <span style={{ whiteSpace: 'nowrap' }}>🌿 {session.gitBranch}</span>
+      )}
+      <span style={{ color: statusColor, whiteSpace: 'nowrap' }}>{statusLabel}</span>
+      {elapsed !== null && (
+        <span style={{ whiteSpace: 'nowrap' }}>
+          ⏱ {elapsed === 0 ? 'ahora' : `${elapsed}min`}
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ── Per-session pane (one per session, all mounted, inactive are transparent) ──
 function SessionPane({
-  sessionId, clientSlug, isActive,
+  sessionId, clientSlug, isActive, resume,
 }: {
   sessionId: string
   clientSlug: string
   isActive: boolean
+  resume?: boolean
 }) {
   const termRef    = useRef<Terminal | null>(null)
   const fitRef     = useRef<FitAddon | null>(null)
   const [termReady, setTermReady] = useState(false)
-  const { sendData, resize } = useTerminalSocket({ sessionId, clientSlug, terminalRef: termRef })
+  const { sendData, resize } = useTerminalSocket({
+    sessionId,
+    clientSlug,
+    terminalRef: termRef,
+    newSession: !resume,
+  })
 
   // Re-fit when becoming active (after xterm is ready)
   useEffect(() => {
@@ -62,6 +132,7 @@ function SessionPane({
         fitAddonRef={fitRef}
         visible={isActive}
         onReady={() => setTermReady(true)}
+        onResize={resize}
       />
     </>
   )
@@ -104,26 +175,27 @@ function CtrlBtn({
 
 // ── Main Panel ─────────────────────────────────────────────────────────────────
 export function TerminalPanel() {
-  const sessions       = useTerminalStore((s) => s.sessions)
-  const activeId       = useTerminalStore((s) => s.activeSessionId)
+  const sessions        = useTerminalStore((s) => s.sessions)
+  const activeId        = useTerminalStore((s) => s.activeSessionId)
   const switchToSession = useTerminalStore((s) => s.switchToSession)
-  const closeSession   = useTerminalStore((s) => s.closeSession)
-  const markRead       = useTerminalStore((s) => s.markRead)
-  const setMinimized   = useTerminalStore((s) => s.setMinimized)
-  const setOpen        = useTerminalStore((s) => s.setOpen)
+  const closeSession    = useTerminalStore((s) => s.closeSession)
+  const markRead        = useTerminalStore((s) => s.markRead)
+  const setMinimized    = useTerminalStore((s) => s.setMinimized)
+  const setOpen         = useTerminalStore((s) => s.setOpen)
+  const openSession     = useTerminalStore((s) => s.openSession)
 
-  const [heightVh, setHeightVh]     = useState(40)
+  const [heightVh, setHeightVh]       = useState(40)
   const [isFullscreen, setFullscreen] = useState(false)
   // Animate panel open: start at 0, jump to target after first paint
-  const [mounted, setMounted]       = useState(false)
+  const [mounted, setMounted]         = useState(false)
   useLayoutEffect(() => {
     const t = setTimeout(() => setMounted(true), 16) // one frame
     return () => clearTimeout(t)
   }, [])
 
   // ── Drag-to-resize ────────────────────────────────────────────────────────
-  const dragging       = useRef(false)
-  const dragStartY     = useRef(0)
+  const dragging        = useRef(false)
+  const dragStartY      = useRef(0)
   const dragStartHeight = useRef(0)
 
   const onDragStart = useCallback((e: React.MouseEvent) => {
@@ -154,6 +226,21 @@ export function TerminalPanel() {
     switchToSession(id)
     markRead(id)
   }, [switchToSession, markRead])
+
+  // ── Resume: new tab that attaches existing tmux session (-A) ─────────────
+  const handleResume = useCallback(() => {
+    const active = sessions.find((s) => s.id === activeId)
+    if (!active) return
+    openSession({
+      id: `${active.id}-r${Date.now()}`,
+      clientSlug: active.clientSlug,
+      projectId: active.projectId,
+      label: `↺ ${active.label}`,
+      resume: true,
+    })
+  }, [sessions, activeId, openSession])
+
+  const activeSession = sessions.find((s) => s.id === activeId)
 
   if (sessions.length === 0) return null
 
@@ -220,6 +307,9 @@ export function TerminalPanel() {
 
         {/* Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '0 6px', flexShrink: 0 }}>
+          <CtrlBtn title="Resumir sesión tmux" onClick={handleResume}>
+            <RotateCw size={13} />
+          </CtrlBtn>
           <CtrlBtn title="Minimizar" onClick={() => setMinimized(true)}>
             <Minus size={13} />
           </CtrlBtn>
@@ -236,16 +326,20 @@ export function TerminalPanel() {
       </div>
 
       {/* ── Terminal panes ────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
         {sessions.map((s) => (
           <SessionPane
             key={s.id}
             sessionId={s.id}
             clientSlug={s.clientSlug}
             isActive={s.id === activeId}
+            resume={s.resume}
           />
         ))}
       </div>
+
+      {/* ── Status bar ───────────────────────────────────────────────────── */}
+      {activeSession && <StatusBar session={activeSession} />}
     </div>
   )
 }

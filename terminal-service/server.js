@@ -1,7 +1,7 @@
 'use strict'
 
 /**
- * ManIAcos Terminal Service — v1.2.0
+ * ManIAcos Terminal Service — v1.3.0
  * WebSocket server: Express + ws + node-pty + Supabase Auth
  *
  * Protocol:
@@ -18,6 +18,7 @@
 const http    = require('http')
 const path    = require('path')
 const fs      = require('fs')
+const { execSync } = require('child_process')
 const express = require('express')
 const { WebSocketServer } = require('ws')
 const pty     = require('node-pty')
@@ -276,12 +277,22 @@ wss.on('connection', (ws, req) => {
     const slugSafe = rawSlug
       ? rawSlug.replace(/[^a-z0-9_-]/gi, '_').slice(0, 40)
       : `personal_${userInfo.linuxUser}`
-    sessionName = `maniaco_${userInfo.linuxUser}_${slugSafe}`
+    const stableSession = `maniaco_${userInfo.linuxUser}_${slugSafe}`
+    // newSession=true → unique name (no -A), fresh pty; false → attach-or-create (-A)
+    const wantsNew = msg.newSession !== false
+    sessionName = wantsNew ? `${stableSession}_${Date.now()}` : stableSession
 
     const cols = Math.max(20, Math.min(500, msg.cols ?? 220))
     const rows = Math.max(5,  Math.min(200, msg.rows ?? 50))
 
-    // ── FIX 1: Session startup command ────────────────────────────────────
+    // ── Get git branch for status bar ──────────────────────────────────────
+    let gitBranch = ''
+    try {
+      gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd, timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString().trim()
+    } catch { /* not a git repo or git unavailable */ }
+
+    // ── Session startup command ────────────────────────────────────────────
     // New sessions auto-launch claude. Existing sessions (tmux -A attach)
     // ignore the command — the user is already in their running claude session.
     // If claude is not installed for this user, falls back to bash with a clear message.
@@ -297,9 +308,15 @@ wss.on('connection', (ws, req) => {
       ].join(' && '),
     ]
 
-    // ── Spawn tmux (-A = attach if exists, create if not) ──────────────────
+    // ── Spawn tmux ────────────────────────────────────────────────────────
+    // wantsNew=true → 'new-session -s uniqueName' (always fresh)
+    // wantsNew=false → 'new-session -A -s stableName' (attach-or-create)
+    const tmuxArgs = wantsNew
+      ? ['new-session', '-s', sessionName, ...sessionCmd]
+      : ['new-session', '-A', '-s', sessionName, ...sessionCmd]
+
     try {
-      ptyProc = pty.spawn('tmux', ['new-session', '-A', '-s', sessionName, ...sessionCmd], {
+      ptyProc = pty.spawn('tmux', tmuxArgs, {
         name   : 'xterm-256color',
         cols, rows, cwd,
         env    : {
@@ -341,8 +358,8 @@ wss.on('connection', (ws, req) => {
       sendJson({ type: 'heartbeat' })
     }, HEARTBEAT_MS)
 
-    console.log(`[terminal] auth OK: ${userEmail} → ${sessionName} (${cwd})`)
-    sendJson({ type: 'auth_ok', user: userInfo.linuxUser, cwd, session: sessionName })
+    console.log(`[terminal] auth OK: ${userEmail} → ${sessionName} (${cwd}) branch=${gitBranch || 'none'}`)
+    sendJson({ type: 'auth_ok', user: userInfo.linuxUser, cwd, session: sessionName, gitBranch })
 
     auditLog(userEmail, userInfo.linuxUser, sessionName, 'session_start').catch(() => {})
   }
@@ -383,7 +400,7 @@ async function auditLog(email, linuxUser, sessionName, event) {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[terminal] v1.2.0 listening on 127.0.0.1:${PORT}`)
+  console.log(`[terminal] v1.3.0 listening on 127.0.0.1:${PORT}`)
   if (!SUPABASE_URL)     console.warn('[terminal] ⚠ SUPABASE_URL not set — auth will fail')
   if (!SUPABASE_SVC_KEY) console.warn('[terminal] ⚠ SUPABASE_SERVICE_ROLE_KEY not set — auth + audit log disabled')
   if (supabase)          console.log('[terminal] Supabase client ready (auth via getUser)')

@@ -5,6 +5,7 @@ export interface TerminalReadyInfo {
   user: string
   cwd: string
   session: string
+  gitBranch: string
 }
 
 export interface ConnectOptions {
@@ -14,6 +15,8 @@ export interface ConnectOptions {
   clientSlug: string
   cols: number
   rows: number
+  /** true (default) = fresh tmux session; false = attach-or-create (-A) */
+  newSession?: boolean
   onData: (data: string) => void
   onReady: (info: TerminalReadyInfo) => void
   onError: (msg: string) => void
@@ -72,6 +75,7 @@ export function connectTerminal(opts: ConnectOptions): TerminalSocket {
               clientSlug: opts.clientSlug,   // "" = personal, else project slug
               cols: opts.cols,
               rows: opts.rows,
+              newSession: opts.newSession ?? true,
             }
             // Diagnostic log — visible in browser DevTools Console
             console.log('[WS-AUTH] token len:', opts.jwt?.length,
@@ -89,9 +93,10 @@ export function connectTerminal(opts: ConnectOptions): TerminalSocket {
             authed = true
             console.debug('[terminal] auth_ok', msg)
             opts.onReady({
-              user:    String(msg.user    ?? ''),
-              cwd:     String(msg.cwd     ?? ''),
-              session: String(msg.session ?? ''),
+              user:      String(msg.user      ?? ''),
+              cwd:       String(msg.cwd       ?? ''),
+              session:   String(msg.session   ?? ''),
+              gitBranch: String(msg.gitBranch ?? ''),
             })
             // Start heartbeat responder
             heartbeatTimer = setInterval(() => {

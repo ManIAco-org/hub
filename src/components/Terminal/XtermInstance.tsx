@@ -35,14 +35,17 @@ interface Props {
   fitAddonRef: React.MutableRefObject<FitAddon | null>
   visible: boolean
   onReady?: () => void
+  onResize?: (cols: number, rows: number) => void
 }
 
-export function XtermInstance({ onData, terminalRef, fitAddonRef, visible, onReady }: Props) {
+export function XtermInstance({ onData, terminalRef, fitAddonRef, visible, onReady, onResize }: Props) {
   const containerRef   = useRef<HTMLDivElement>(null)
   const onDataRef      = useRef(onData)
   const onReadyRef     = useRef(onReady)
+  const onResizeRef    = useRef(onResize)
   onDataRef.current    = onData
   onReadyRef.current   = onReady
+  onResizeRef.current  = onResize
 
   // Track whether we've received first output — triggers fade-in
   const [hasOutput, setHasOutput] = useState(false)
@@ -84,7 +87,10 @@ export function XtermInstance({ onData, terminalRef, fitAddonRef, visible, onRea
       // Delay first fit by 50ms so DOM has settled after open()
       const fitTimer = setTimeout(() => {
         if (!disposed) {
-          try { fitAddon.fit() } catch { /* ignore */ }
+          try {
+            fitAddon.fit()
+            onResizeRef.current?.(term.cols, term.rows)
+          } catch { /* ignore */ }
           onReadyRef.current?.()
         }
       }, 50)
@@ -114,10 +120,13 @@ export function XtermInstance({ onData, terminalRef, fitAddonRef, visible, onRea
         return writeOrig(data as Parameters<typeof term.write>[0], cb)
       }
 
-      // Responsive re-fit via ResizeObserver
+      // Responsive re-fit via ResizeObserver — also sends WS resize so pty matches
       const ro = new ResizeObserver(() => {
         if (!disposed) {
-          try { fitAddon.fit() } catch { /* ignore */ }
+          try {
+            fitAddon.fit()
+            onResizeRef.current?.(term.cols, term.rows)
+          } catch { /* ignore */ }
         }
       })
       ro.observe(containerRef.current!)

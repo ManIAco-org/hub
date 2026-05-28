@@ -10,6 +10,7 @@ interface Options {
   sessionId: string
   clientSlug: string
   terminalRef: React.MutableRefObject<Terminal | null>
+  newSession?: boolean  // true (default) = fresh tmux; false = attach-or-create
 }
 
 /** Get a fresh JWT — refreshes proactively if expiring within 5 min. */
@@ -34,10 +35,12 @@ async function getFreshJwt(): Promise<string | null> {
   return session.access_token
 }
 
-export function useTerminalSocket({ sessionId, clientSlug, terminalRef }: Options) {
+export function useTerminalSocket({ sessionId, clientSlug, terminalRef, newSession }: Options) {
   const socketRef = useRef<TerminalSocket | null>(null)
   const updateStatus    = useTerminalStore((s) => s.updateStatus)
   const incrementUnread = useTerminalStore((s) => s.incrementUnread)
+  const updateInfo      = useTerminalStore((s) => s.updateInfo)
+  const touchActivity   = useTerminalStore((s) => s.touchActivity)
   const activeSessionId = useTerminalStore((s) => s.activeSessionId)
   const activeSessionIdRef = useRef(activeSessionId)
   activeSessionIdRef.current = activeSessionId
@@ -75,16 +78,19 @@ export function useTerminalSocket({ sessionId, clientSlug, terminalRef }: Option
         clientSlug,
         cols: term?.cols ?? 80,
         rows: term?.rows ?? 24,
+        newSession: newSession ?? true,
         onData(data) {
           if (!mounted) return
           terminalRef.current?.write(data)
+          touchActivity(sessionId)
           if (activeSessionIdRef.current !== sessionId) {
             incrementUnread(sessionId)
           }
         },
-        onReady() {
+        onReady(info) {
           if (!mounted) return
           updateStatus(sessionId, 'connected')
+          updateInfo(sessionId, { cwd: info.cwd, gitBranch: info.gitBranch })
         },
         onError(msg) {
           if (!mounted) return

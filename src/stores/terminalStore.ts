@@ -6,9 +6,13 @@ export interface TerminalSession {
   id: string
   clientSlug: string
   projectId?: string
-  label: string        // "Personal" or project name
+  label: string
   status: SessionStatus
   unread: number
+  resume?: boolean         // true = attach existing tmux (-A); false = new named session
+  cwd?: string             // working dir received from auth_ok
+  gitBranch?: string       // git branch received from auth_ok
+  lastActivityAt?: number  // ms timestamp of last terminal output (for status bar timer)
 }
 
 interface TerminalStore {
@@ -25,6 +29,8 @@ interface TerminalStore {
   incrementUnread: (id: string) => void
   setOpen: (open: boolean) => void
   setMinimized: (minimized: boolean) => void
+  updateInfo: (id: string, info: { cwd?: string; gitBranch?: string }) => void
+  touchActivity: (id: string) => void
 }
 
 export const useTerminalStore = create<TerminalStore>((set) => ({
@@ -79,4 +85,14 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
 
   setOpen: (open) => set({ isOpen: open }),
   setMinimized: (minimized) => set({ isMinimized: minimized }),
+
+  updateInfo: (id, info) => set((state) => ({
+    sessions: state.sessions.map((s) => (s.id === id ? { ...s, ...info } : s)),
+  })),
+
+  touchActivity: (id) => set((state) => ({
+    sessions: state.sessions.map((s) =>
+      s.id === id ? { ...s, lastActivityAt: Date.now() } : s,
+    ),
+  })),
 }))
