@@ -1,11 +1,11 @@
 'use strict'
 
 /**
- * ManIAcos Terminal Service — v1.0.0
- * WebSocket server: Express + ws + node-pty + JWT auth
+ * ManIAcos Terminal Service — v1.1.0
+ * WebSocket server: Express + ws + node-pty + Supabase Auth
  *
  * Protocol:
- *   1. Server → Client: {"type":"ready","version":"1.0.0"}
+ *   1. Server → Client: {"type":"ready","version":"1.1.0"}
  *   2. Client → Server: {"type":"auth","token":"<supabase JWT>","clientSlug":"rc-repuestos","cols":220,"rows":50}
  *   3. Server → Client: {"type":"auth_ok","user":"franco","cwd":"/srv/maniacos/rc-repuestos","session":"maniaco_franco_rc-repuestos"}
  *   4. Bidirectional raw terminal data (string frames)
@@ -20,19 +20,20 @@ const path    = require('path')
 const express = require('express')
 const { WebSocketServer } = require('ws')
 const pty     = require('node-pty')
-const jwt     = require('jsonwebtoken')
+const { createClient } = require('@supabase/supabase-js')
 
 // ── Config ───────────────────────────────────────────────────────────────────
-const PORT                = parseInt(process.env.PORT              ?? '3001', 10)
-const SUPABASE_URL        = process.env.SUPABASE_URL               ?? ''
-const SUPABASE_SVC_KEY    = process.env.SUPABASE_SERVICE_ROLE_KEY  ?? ''
+const PORT             = parseInt(process.env.PORT              ?? '3001', 10)
+const SUPABASE_URL     = process.env.SUPABASE_URL               ?? ''
+const SUPABASE_SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY  ?? ''
 
-// Supabase JWT secret is base64-encoded in the dashboard/env.
-// jsonwebtoken needs raw bytes (Buffer) to verify HS256 signatures correctly.
-const _JWT_SECRET_RAW = process.env.SUPABASE_JWT_SECRET ?? ''
-const JWT_SECRET = _JWT_SECRET_RAW
-  ? Buffer.from(_JWT_SECRET_RAW, 'base64')
-  : ''
+// Supabase client for token validation (uses service role key — server-side only)
+// supabase.auth.getUser(token) validates any Supabase JWT regardless of algorithm.
+const supabase = SUPABASE_URL && SUPABASE_SVC_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SVC_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  : null
 
 const MAX_SESSIONS_PER_USER = 3
 const HEARTBEAT_MS          = 30_000           // 30 s
@@ -130,13 +131,13 @@ wss.on('connection', (ws, req) => {
   }
 
   // ── Announce ready ───────────────────────────────────────────────────────────
-  sendJson({ type: 'ready', version: '1.0.0' })
+  sendJson({ type: 'ready', version: '1.1.0' })
 
   // ── Message handler ──────────────────────────────────────────────────────────
   ws.on('message', (raw, isBinary) => {
     resetIdle()
 
-    // ── Phase 1: auth handshake ────────────────────────────────────────────────
+    // ── Phase 1: auth handshake (async) ───────────────────────────────────────
     if (!authenticated) {
       let msg
       try   { msg = JSON.parse(raw.toString()) }
@@ -147,124 +148,12 @@ wss.on('connection', (ws, req) => {
         return
       }
 
-      // Require JWT secret to be configured
-      if (!JWT_SECRET) {
-        console.error('[terminal] SUPABASE_JWT_SECRET not configured')
-        ws.close(1011, 'server misconfigured')
-        return
-      }
-
-      // Validate JWT
-      let payload
-      try {
-        payload = jwt.verify(msg.token, JWT_SECRET, { algorithms: ['HS256'] })
-      } catch (err) {
-        // Log real error: visible in `docker logs maniaco-terminal`
-        console.error('[auth] JWT verify failed:', err.name, '-', err.message,
-          '| token_len:', msg.token?.length ?? 0,
-          '| secret_bytes:', JWT_SECRET.length,
-          '| clientSlug:', JSON.stringify(msg.clientSlug))
-        sendJson({ type: 'auth_error', message: `Token inválido (${err.name}: ${err.message})` })
-        ws.close(1008, 'invalid token')
-        return
-      }
-
-      userEmail = (payload.email ?? '').toLowerCase()
-      userInfo  = USER_MAP[userEmail]
-
-      if (!userInfo) {
-        sendJson({ type: 'auth_error', message: `Usuario ${userEmail} no autorizado` })
-        ws.close(1008, 'unauthorized email')
-        return
-      }
-
-      // Rate limit: max N concurrent sessions per user
-      if (!activeSessions.has(userEmail)) activeSessions.set(userEmail, new Set())
-      const pool = activeSessions.get(userEmail)
-      if (pool.size >= MAX_SESSIONS_PER_USER) {
-        sendJson({ type: 'error', message: `Máximo ${MAX_SESSIONS_PER_USER} sesiones simultáneas` })
-        ws.close(1013, 'session limit reached')
-        return
-      }
-
-      // ── Resolve cwd with path traversal protection ─────────────────────────
-      const rawSlug = (typeof msg.clientSlug === 'string' ? msg.clientSlug : '').trim()
-      let cwd
-
-      if (!rawSlug) {
-        // General terminal: personal workspace
-        cwd = `${ROOT_PATH}/personal/${userInfo.linuxUser}`
-      } else {
-        cwd = `${ROOT_PATH}/${rawSlug}`
-      }
-
-      // Resolve to canonical path and verify it stays under ROOT_PATH
-      const resolved = path.resolve(cwd)
-      if (!resolved.startsWith(ROOT_PATH + '/') && resolved !== ROOT_PATH) {
-        sendJson({ type: 'auth_error', message: 'Ruta no permitida' })
-        ws.close(1008, 'path traversal attempt')
-        return
-      }
-      cwd = resolved
-
-      // ── Build tmux session name ────────────────────────────────────────────
-      // Safe chars only (tmux restriction)
-      const slugSafe = rawSlug
-        ? rawSlug.replace(/[^a-z0-9_-]/gi, '_').slice(0, 40)
-        : `personal_${userInfo.linuxUser}`
-      sessionName = `maniaco_${userInfo.linuxUser}_${slugSafe}`
-
-      const cols = Math.max(20, Math.min(500, msg.cols ?? 220))
-      const rows = Math.max(5,  Math.min(200, msg.rows ?? 50))
-
-      // ── Spawn tmux (-A = attach if exists, create if not) ──────────────────
-      try {
-        ptyProc = pty.spawn('tmux', ['new-session', '-A', '-s', sessionName], {
-          name   : 'xterm-256color',
-          cols, rows, cwd,
-          env    : {
-            ...process.env,
-            HOME      : userInfo.home,
-            USER      : userInfo.linuxUser,
-            LOGNAME   : userInfo.linuxUser,
-            SHELL     : '/bin/bash',
-            TERM      : 'xterm-256color',
-            COLORTERM : 'truecolor',
-          },
-          uid: userInfo.uid,
-          gid: userInfo.gid,
-        })
-      } catch (err) {
-        console.error('[terminal] pty spawn failed:', err.message)
-        sendJson({ type: 'error', message: 'No se pudo iniciar la terminal' })
-        ws.close(1011, 'pty spawn error')
-        return
-      }
-
-      authenticated = true
-      pool.add(ws)
-
-      // pty → WS raw output
-      ptyProc.onData((data) => {
-        resetIdle()
-        if (ws.readyState === ws.OPEN) ws.send(data)
+      // Delegate async auth to inner function
+      handleAuth(ws, msg).catch((err) => {
+        console.error('[auth] unexpected error:', err.message)
+        sendJson({ type: 'auth_error', message: 'Error interno de autenticación' })
+        ws.close(1011, 'auth error')
       })
-
-      ptyProc.onExit(({ exitCode }) => {
-        console.log(`[terminal] session ${sessionName} exited (code ${exitCode ?? 'unknown'})`)
-        sendJson({ type: 'exit', code: exitCode ?? 0 })
-        ws.close(1000, 'terminal exited')
-      })
-
-      // Heartbeat pump
-      heartbeatTimer = setInterval(() => {
-        sendJson({ type: 'heartbeat' })
-      }, HEARTBEAT_MS)
-
-      console.log(`[terminal] auth OK: ${userEmail} → ${sessionName} (${cwd})`)
-      sendJson({ type: 'auth_ok', user: userInfo.linuxUser, cwd, session: sessionName })
-
-      auditLog(userEmail, userInfo.linuxUser, sessionName, 'session_start').catch(() => {})
       return
     }
 
@@ -300,8 +189,129 @@ wss.on('connection', (ws, req) => {
     ptyProc.write(isBinary ? raw.toString('utf8') : data)
   })
 
-  ws.on('close', ()        => { cleanup() })
-  ws.on('error', (err)     => { console.error('[terminal] ws error:', err.message); cleanup() })
+  ws.on('close', ()    => { cleanup() })
+  ws.on('error', (err) => { console.error('[terminal] ws error:', err.message); cleanup() })
+
+  // ── Auth handler (async) ─────────────────────────────────────────────────────
+  async function handleAuth(ws, msg) {
+    // Require Supabase to be configured
+    if (!supabase) {
+      console.error('[auth] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured')
+      sendJson({ type: 'auth_error', message: 'Servidor mal configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)' })
+      ws.close(1011, 'server misconfigured')
+      return
+    }
+
+    // Validate token via Supabase — works with any JWT algorithm (HS256, ES256, RS256)
+    console.log('[auth] validating token (len=%d, clientSlug=%s)', msg.token?.length ?? 0, JSON.stringify(msg.clientSlug))
+    const { data, error } = await supabase.auth.getUser(msg.token)
+
+    if (error || !data?.user) {
+      console.error('[auth] getUser failed:', error?.message ?? 'no user returned',
+        '| status:', error?.status, '| code:', error?.code)
+      sendJson({ type: 'auth_error', message: `Token inválido (${error?.message ?? 'no user'})` })
+      ws.close(1008, 'invalid token')
+      return
+    }
+
+    userEmail = (data.user.email ?? '').toLowerCase()
+    userInfo  = USER_MAP[userEmail]
+
+    console.log('[auth] token valid for:', userEmail)
+
+    if (!userInfo) {
+      sendJson({ type: 'auth_error', message: `Usuario ${userEmail} no autorizado` })
+      ws.close(1008, 'unauthorized email')
+      return
+    }
+
+    // Rate limit: max N concurrent sessions per user
+    if (!activeSessions.has(userEmail)) activeSessions.set(userEmail, new Set())
+    const pool = activeSessions.get(userEmail)
+    if (pool.size >= MAX_SESSIONS_PER_USER) {
+      sendJson({ type: 'error', message: `Máximo ${MAX_SESSIONS_PER_USER} sesiones simultáneas` })
+      ws.close(1013, 'session limit reached')
+      return
+    }
+
+    // ── Resolve cwd with path traversal protection ─────────────────────────
+    const rawSlug = (typeof msg.clientSlug === 'string' ? msg.clientSlug : '').trim()
+    let cwd
+
+    if (!rawSlug) {
+      // General terminal: personal workspace
+      cwd = `${ROOT_PATH}/personal/${userInfo.linuxUser}`
+    } else {
+      cwd = `${ROOT_PATH}/${rawSlug}`
+    }
+
+    // Resolve to canonical path and verify it stays under ROOT_PATH
+    const resolved = path.resolve(cwd)
+    if (!resolved.startsWith(ROOT_PATH + '/') && resolved !== ROOT_PATH) {
+      sendJson({ type: 'auth_error', message: 'Ruta no permitida' })
+      ws.close(1008, 'path traversal attempt')
+      return
+    }
+    cwd = resolved
+
+    // ── Build tmux session name ────────────────────────────────────────────
+    const slugSafe = rawSlug
+      ? rawSlug.replace(/[^a-z0-9_-]/gi, '_').slice(0, 40)
+      : `personal_${userInfo.linuxUser}`
+    sessionName = `maniaco_${userInfo.linuxUser}_${slugSafe}`
+
+    const cols = Math.max(20, Math.min(500, msg.cols ?? 220))
+    const rows = Math.max(5,  Math.min(200, msg.rows ?? 50))
+
+    // ── Spawn tmux (-A = attach if exists, create if not) ──────────────────
+    try {
+      ptyProc = pty.spawn('tmux', ['new-session', '-A', '-s', sessionName], {
+        name   : 'xterm-256color',
+        cols, rows, cwd,
+        env    : {
+          ...process.env,
+          HOME      : userInfo.home,
+          USER      : userInfo.linuxUser,
+          LOGNAME   : userInfo.linuxUser,
+          SHELL     : '/bin/bash',
+          TERM      : 'xterm-256color',
+          COLORTERM : 'truecolor',
+        },
+        uid: userInfo.uid,
+        gid: userInfo.gid,
+      })
+    } catch (err) {
+      console.error('[terminal] pty spawn failed:', err.message)
+      sendJson({ type: 'error', message: 'No se pudo iniciar la terminal' })
+      ws.close(1011, 'pty spawn error')
+      return
+    }
+
+    authenticated = true
+    pool.add(ws)
+
+    // pty → WS raw output
+    ptyProc.onData((data) => {
+      resetIdle()
+      if (ws.readyState === ws.OPEN) ws.send(data)
+    })
+
+    ptyProc.onExit(({ exitCode }) => {
+      console.log(`[terminal] session ${sessionName} exited (code ${exitCode ?? 'unknown'})`)
+      sendJson({ type: 'exit', code: exitCode ?? 0 })
+      ws.close(1000, 'terminal exited')
+    })
+
+    // Heartbeat pump
+    heartbeatTimer = setInterval(() => {
+      sendJson({ type: 'heartbeat' })
+    }, HEARTBEAT_MS)
+
+    console.log(`[terminal] auth OK: ${userEmail} → ${sessionName} (${cwd})`)
+    sendJson({ type: 'auth_ok', user: userInfo.linuxUser, cwd, session: sessionName })
+
+    auditLog(userEmail, userInfo.linuxUser, sessionName, 'session_start').catch(() => {})
+  }
 })
 
 // ── Audit log (Supabase agent_runs) ─────────────────────────────────────────
@@ -339,17 +349,10 @@ async function auditLog(email, linuxUser, sessionName, event) {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[terminal] v1.0.0 listening on 127.0.0.1:${PORT}`)
-  if (!JWT_SECRET || JWT_SECRET.length === 0) {
-    console.warn('[terminal] ⚠ SUPABASE_JWT_SECRET not set — all auth will fail')
-  } else {
-    // Buffer.length = decoded byte count (should be ~64 for a 88-char base64 secret)
-    // Shows first/last hex chars to confirm it decoded without exposing the full value
-    const hex = JWT_SECRET.toString('hex')
-    const preview = hex.slice(0, 8) + '...' + hex.slice(-8)
-    console.log(`[terminal] JWT secret loaded (raw_b64_len=${_JWT_SECRET_RAW.length}, decoded_bytes=${JWT_SECRET.length}, hex_preview=${preview})`)
-  }
-  if (!SUPABASE_SVC_KEY) console.warn('[terminal] ⚠ SUPABASE_SERVICE_ROLE_KEY not set — audit log disabled')
+  console.log(`[terminal] v1.1.0 listening on 127.0.0.1:${PORT}`)
+  if (!SUPABASE_URL)     console.warn('[terminal] ⚠ SUPABASE_URL not set — auth will fail')
+  if (!SUPABASE_SVC_KEY) console.warn('[terminal] ⚠ SUPABASE_SERVICE_ROLE_KEY not set — auth + audit log disabled')
+  if (supabase)          console.log('[terminal] Supabase client ready (auth via getUser)')
 })
 
 // Graceful shutdown on SIGTERM (Docker stop)
