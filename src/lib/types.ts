@@ -84,6 +84,20 @@ export interface Note {
   updated_at: string
 }
 
+export type ClientResourceKind = 'note' | 'diagram' | 'file' | 'conversation'
+
+export interface ClientResource {
+  id: string
+  client_id: string
+  kind: ClientResourceKind
+  title: string
+  content: Record<string, unknown> | null  // {html:"..."} for notes, excalidraw json for diagrams
+  file_url: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
 // Panel nav items
 export interface NavItem {
   id: string

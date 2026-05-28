@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ExternalLink, Github, Monitor, X } from 'lucide-react'
-import type { Project, ProjectStatus } from '@/lib/types'
+import type { Project, ProjectStatus, Client } from '@/lib/types'
 
 const STATUS_BADGE: Record<ProjectStatus, { label: string; className: string }> = {
   active: { label: 'Activo',   className: 'badge badge-acc' },
@@ -14,30 +14,22 @@ const STATUS_BADGE: Record<ProjectStatus, { label: string; className: string }> 
 
 interface NewProjectForm {
   name: string
-  client_name: string
-  description: string
-  vercel_url: string
-  github_url: string
-  server_path: string
+  clientId: string    // FK to clients.id ('' = none)
+  clientName: string  // display / free-text fallback
 }
 
-const EMPTY_FORM: NewProjectForm = {
-  name: '',
-  client_name: '',
-  description: '',
-  vercel_url: '',
-  github_url: '',
-  server_path: '',
-}
+const EMPTY_FORM: NewProjectForm = { name: '', clientId: '', clientName: '' }
 
 export function ProjectsPanel({
   initialData,
   ownerEmail,
   filterCliente,
+  clients = [],
 }: {
   initialData: Project[]
   ownerEmail: string
   filterCliente?: string
+  clients?: Pick<Client, 'id' | 'slug' | 'name'>[]
 }) {
   const supabase = createClient()
   const router = useRouter()
@@ -49,7 +41,9 @@ export function ProjectsPanel({
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.name.trim() || !form.client_name.trim()) return
+    const nameClean = form.name.trim()
+    const clientNameClean = form.clientName.trim()
+    if (!nameClean || !clientNameClean) return
 
     setSaving(true)
     setError(null)
@@ -57,12 +51,9 @@ export function ProjectsPanel({
     const { data, error: insertError } = await supabase
       .from('projects')
       .insert({
-        name: form.name.trim(),
-        client_name: form.client_name.trim(),
-        description: form.description.trim() || null,
-        vercel_url: form.vercel_url.trim() || null,
-        github_url: form.github_url.trim() || null,
-        server_path: form.server_path.trim() || null,
+        name: nameClean,
+        client_name: clientNameClean,
+        client_id: form.clientId || null,
         owner_email: ownerEmail,
         status: 'active',
       })
@@ -81,6 +72,15 @@ export function ProjectsPanel({
     }
     setForm(EMPTY_FORM)
     setShowNewForm(false)
+  }
+
+  function handleClientSelect(e: React.ChangeEvent<HTMLSelectElement>) {
+    const selected = clients.find((c) => c.id === e.target.value)
+    if (selected) {
+      setForm((f) => ({ ...f, clientId: selected.id, clientName: selected.name }))
+    } else {
+      setForm((f) => ({ ...f, clientId: '', clientName: '' }))
+    }
   }
 
   const displayed = filterCliente
@@ -152,7 +152,7 @@ export function ProjectsPanel({
         </div>
       )}
 
-      {/* New project modal (inline) */}
+      {/* New project modal */}
       {showNewForm && (
         <div
           style={{
@@ -166,7 +166,7 @@ export function ProjectsPanel({
             padding: '20px',
           }}
           onClick={(e) => {
-            if (e.target === e.currentTarget) setShowNewForm(false)
+            if (e.target === e.currentTarget) { setShowNewForm(false); setForm(EMPTY_FORM) }
           }}
         >
           <form
@@ -177,7 +177,7 @@ export function ProjectsPanel({
               borderRadius: 'var(--r16)',
               padding: '28px',
               width: '100%',
-              maxWidth: '480px',
+              maxWidth: '420px',
               boxShadow: 'var(--shadow-lg)',
             }}
           >
@@ -194,64 +194,39 @@ export function ProjectsPanel({
                 className="input"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Hub ManIAcos"
+                placeholder="Mi proyecto"
                 required
                 autoFocus
               />
             </div>
 
-            {/* Client */}
-            <div style={{ marginBottom: '14px' }}>
+            {/* Client dropdown */}
+            <div style={{ marginBottom: '20px' }}>
               <label style={{ fontSize: 'var(--text-xs)', color: 'var(--t2)', fontWeight: 500, display: 'block', marginBottom: '4px' }}>
                 Cliente *
               </label>
-              <input
-                className="input"
-                value={form.client_name}
-                onChange={(e) => setForm((f) => ({ ...f, client_name: e.target.value }))}
-                placeholder="ManIAcos"
-                required
-              />
-            </div>
-
-            {/* Description */}
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: 'var(--text-xs)', color: 'var(--t2)', fontWeight: 500, display: 'block', marginBottom: '4px' }}>
-                Descripción
-              </label>
-              <input
-                className="input"
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="Breve descripción del proyecto"
-              />
-            </div>
-
-            {/* Vercel URL */}
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: 'var(--text-xs)', color: 'var(--t2)', fontWeight: 500, display: 'block', marginBottom: '4px' }}>
-                URL de Vercel
-              </label>
-              <input
-                className="input"
-                value={form.vercel_url}
-                onChange={(e) => setForm((f) => ({ ...f, vercel_url: e.target.value }))}
-                placeholder="https://proyecto.vercel.app"
-                type="url"
-              />
-            </div>
-
-            {/* Server path */}
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ fontSize: 'var(--text-xs)', color: 'var(--t2)', fontWeight: 500, display: 'block', marginBottom: '4px' }}>
-                Ruta en Oracle <span style={{ color: 'var(--t3)' }}>(para terminal)</span>
-              </label>
-              <input
-                className="input"
-                value={form.server_path}
-                onChange={(e) => setForm((f) => ({ ...f, server_path: e.target.value }))}
-                placeholder="/srv/maniacos/mi-proyecto"
-              />
+              {clients.length > 0 ? (
+                <select
+                  className="input"
+                  value={form.clientId}
+                  onChange={handleClientSelect}
+                  required
+                  style={{ cursor: 'pointer' }}
+                >
+                  <option value="">Seleccioná un cliente...</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="input"
+                  value={form.clientName}
+                  onChange={(e) => setForm((f) => ({ ...f, clientName: e.target.value, clientId: '' }))}
+                  placeholder="ManIAcos"
+                  required
+                />
+              )}
             </div>
 
             {error && (
@@ -392,6 +367,7 @@ export function ProjectsPanel({
                           }}
                           onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--acc)')}
                           onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--t2)')}
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <ExternalLink size={13} />
                           Ver deploy
@@ -407,7 +383,7 @@ export function ProjectsPanel({
                         {/* Trabajar button */}
                         <button
                           disabled={!hasServerPath}
-                          title={hasServerPath ? 'Abrir terminal en este proyecto' : 'Configurá la ruta del servidor para habilitar el terminal'}
+                          title={hasServerPath ? 'Abrir terminal en este proyecto' : 'El servidor se configura automáticamente'}
                           className="btn-secondary"
                           onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/proyectos/${project.id}`) }}
                           style={{

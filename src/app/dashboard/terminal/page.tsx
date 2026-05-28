@@ -4,13 +4,19 @@ import { TerminalGeneralPanel } from '@/components/panels/TerminalGeneralPanel'
 
 export const dynamic = 'force-dynamic'
 
+// Map email prefix → linux username on Oracle
+const LINUX_USERS: Record<string, string> = {
+  'franco.sanmartin': 'franco',
+  'luis.giannasi':    'lucho',
+  'noelia.bottallo':  'noe',
+}
+
 export default async function TerminalPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Derive linux username from email prefix
-  // franco.sanmartin@maniaco.online → franco
-  const linuxUser = user?.email?.split('@')[0]?.split('.')[0] ?? 'user'
+  const emailPrefix = user?.email?.split('@')[0] ?? ''
+  const linuxUser   = LINUX_USERS[emailPrefix] ?? emailPrefix.split('.')[0] ?? 'user'
 
   return (
     <>

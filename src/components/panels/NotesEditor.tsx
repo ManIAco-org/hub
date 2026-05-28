@@ -1,146 +1,202 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { useCreateBlockNote } from '@blocknote/react'
-import { BlockNoteView } from '@blocknote/mantine'
-import { es } from '@blocknote/core/locales'
-import '@blocknote/mantine/style.css'
+import { useEffect, useRef, useCallback } from 'react'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Placeholder from '@tiptap/extension-placeholder'
+import { Bold, Italic, Strikethrough, Heading1, Heading2, List, ListOrdered } from 'lucide-react'
 
 interface Props {
-  content: string
-  onChange: (markdown: string) => void
+  content: string  // HTML string
+  onChange: (html: string) => void
+}
+
+// Minimal icon toolbar button
+function ToolbarBtn({
+  onClick,
+  active,
+  title,
+  children,
+}: {
+  onClick: () => void
+  active?: boolean
+  title?: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => {
+        e.preventDefault() // prevent editor blur
+        onClick()
+      }}
+      title={title}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: '28px', height: '28px',
+        background: active ? 'var(--acc-d)' : 'none',
+        border: 'none', borderRadius: '4px',
+        cursor: 'pointer',
+        color: active ? 'var(--acc)' : 'var(--t2)',
+        transition: 'background 100ms, color 100ms',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) {
+          e.currentTarget.style.background = 'var(--s3)'
+          e.currentTarget.style.color = 'var(--t1)'
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          e.currentTarget.style.background = 'none'
+          e.currentTarget.style.color = 'var(--t2)'
+        }
+      }}
+    >
+      {children}
+    </button>
+  )
 }
 
 export function NotesEditor({ content, onChange }: Props) {
-  const editor = useCreateBlockNote({
-    dictionary: es,
-  })
-
-  const initialized = useRef(false)
-  const lastContent = useRef(content)
-
-  // Load markdown content into editor when note changes
-  useEffect(() => {
-    if (!editor) return
-
-    async function loadContent() {
-      const blocks = await editor.tryParseMarkdownToBlocks(content)
-      editor.replaceBlocks(editor.document, blocks)
-      initialized.current = true
-      lastContent.current = content
-    }
-
-    loadContent()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, editor])
-
-  // Debounced autosave — 1s after last keystroke
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  function handleChange() {
-    if (!initialized.current) return
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(async () => {
-      const md = await editor.blocksToMarkdownLossy(editor.document)
-      if (md !== lastContent.current) {
-        lastContent.current = md
-        onChange(md)
-      }
-    }, 1000)
-  }
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Placeholder.configure({ placeholder: 'Escribí algo...' }),
+    ],
+    content,
+    editorProps: {
+      attributes: {
+        style: 'outline: none; min-height: 120px; padding: 16px 20px; font-family: var(--sans, sans-serif); font-size: 14px; line-height: 1.65; color: var(--t1);',
+      },
+    },
+    onUpdate: ({ editor: ed }) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => {
+        onChange(ed.getHTML())
+      }, 800)
+    },
+  })
+
+  // Update content when the active note changes
+  const prevContent = useRef(content)
+  useEffect(() => {
+    if (!editor) return
+    if (content !== prevContent.current) {
+      prevContent.current = content
+      editor.commands.setContent(content, { emitUpdate: false })
+    }
+  }, [content, editor])
+
+  if (!editor) return null
+
+  const chain = useCallback(() => editor.chain().focus(), [editor])
 
   return (
     <div
       style={{
-        maxWidth: '800px',
         width: '100%',
-        maxHeight: '50vh',
-        overflowY: 'auto',
+        maxWidth: '800px',
         borderRadius: '12px',
         background: 'var(--s1)',
         border: '1px solid var(--border)',
+        overflow: 'hidden',
         boxSizing: 'border-box',
       }}
     >
+      {/* Toolbar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '2px',
+          padding: '6px 10px',
+          borderBottom: '1px solid var(--border)',
+          background: 'var(--s2)',
+        }}
+      >
+        <ToolbarBtn
+          onClick={() => chain().toggleBold().run()}
+          active={editor.isActive('bold')}
+          title="Negrita"
+        >
+          <Bold size={13} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => chain().toggleItalic().run()}
+          active={editor.isActive('italic')}
+          title="Cursiva"
+        >
+          <Italic size={13} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => chain().toggleStrike().run()}
+          active={editor.isActive('strike')}
+          title="Tachado"
+        >
+          <Strikethrough size={13} />
+        </ToolbarBtn>
+
+        <div style={{ width: '1px', height: '16px', background: 'var(--border)', margin: '0 4px' }} />
+
+        <ToolbarBtn
+          onClick={() => chain().toggleHeading({ level: 1 }).run()}
+          active={editor.isActive('heading', { level: 1 })}
+          title="Título 1"
+        >
+          <Heading1 size={13} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => chain().toggleHeading({ level: 2 }).run()}
+          active={editor.isActive('heading', { level: 2 })}
+          title="Título 2"
+        >
+          <Heading2 size={13} />
+        </ToolbarBtn>
+
+        <div style={{ width: '1px', height: '16px', background: 'var(--border)', margin: '0 4px' }} />
+
+        <ToolbarBtn
+          onClick={() => chain().toggleBulletList().run()}
+          active={editor.isActive('bulletList')}
+          title="Lista"
+        >
+          <List size={13} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => chain().toggleOrderedList().run()}
+          active={editor.isActive('orderedList')}
+          title="Lista numerada"
+        >
+          <ListOrdered size={13} />
+        </ToolbarBtn>
+      </div>
+
+      {/* Editor */}
       <style>{`
-        /* ── Editor body ── */
-        .bn-editor {
-          font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif !important;
-          padding: 20px 24px !important;
+        .tiptap-editor p { margin: 0 0 8px 0; }
+        .tiptap-editor h1 { font-size: 1.4em; font-weight: 700; margin: 0 0 10px 0; color: var(--t1); }
+        .tiptap-editor h2 { font-size: 1.15em; font-weight: 700; margin: 0 0 8px 0; color: var(--t1); }
+        .tiptap-editor ul, .tiptap-editor ol { padding-left: 1.4em; margin: 0 0 8px 0; }
+        .tiptap-editor li { margin-bottom: 2px; }
+        .tiptap-editor strong { font-weight: 700; }
+        .tiptap-editor em { font-style: italic; }
+        .tiptap-editor s { text-decoration: line-through; }
+        .tiptap-editor code { font-family: var(--mono); font-size: 12px; background: var(--s3); padding: 1px 5px; border-radius: 4px; }
+        .tiptap-editor blockquote { border-left: 3px solid var(--border); padding-left: 12px; color: var(--t3); margin: 0 0 8px 0; }
+        .tiptap-editor .is-editor-empty:first-child::before {
+          content: attr(data-placeholder);
+          float: left;
+          color: var(--t3);
+          pointer-events: none;
+          height: 0;
         }
-        .bn-editor p { margin: 0; line-height: 1.65; color: var(--t1); }
-        .bn-editor h1, .bn-editor h2, .bn-editor h3 {
-          font-family: 'Instrument Sans', sans-serif;
-          font-weight: 700;
-          color: var(--t1);
-        }
-
-        /* ── Code blocks ── */
-        .bn-editor code,
-        .bn-editor pre,
-        .bn-editor .bn-inline-content code {
-          font-family: var(--mono) !important;
-          font-size: 12px !important;
-        }
-        .bn-editor pre {
-          background: var(--s2) !important;
-          border-radius: 8px !important;
-          padding: 12px 16px !important;
-        }
-
-        /* ── Placeholder ── */
-        .bn-editor [data-placeholder]::before {
-          color: var(--t3) !important;
-          font-style: normal !important;
-        }
-
-        /* ── Slash menu ── */
-        .bn-suggestion-menu {
-          background: var(--s2) !important;
-          border: 1px solid var(--acc-b) !important;
-          border-radius: 10px !important;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
-        }
-        .bn-suggestion-menu-item {
-          border-radius: 6px !important;
-          color: var(--t1) !important;
-        }
-        .bn-suggestion-menu-item:hover,
-        .bn-suggestion-menu-item[data-selected="true"] {
-          background: var(--acc-d) !important;
-          color: var(--acc) !important;
-        }
-        .bn-suggestion-menu-item-title { font-weight: 600 !important; }
-        .bn-suggestion-menu-item-subtitle { color: var(--t3) !important; font-size: 11px !important; }
-
-        /* ── Formatting toolbar ── */
-        .bn-toolbar {
-          background: var(--s2) !important;
-          border: 1px solid var(--border) !important;
-          border-radius: 8px !important;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.3) !important;
-        }
-        .bn-toolbar button {
-          color: var(--t2) !important;
-          border-radius: 4px !important;
-        }
-        .bn-toolbar button:hover { background: var(--s3) !important; color: var(--t1) !important; }
-        .bn-toolbar button[data-selected="true"],
-        .bn-toolbar button[aria-checked="true"] {
-          background: var(--acc-d) !important;
-          color: var(--acc) !important;
-        }
-
-        /* ── Side menu (drag handle) ── */
-        .bn-side-menu { opacity: 0.4; transition: opacity 150ms; }
-        .bn-side-menu:hover { opacity: 1; }
       `}</style>
-
-      <BlockNoteView
-        editor={editor}
-        onChange={handleChange}
-        theme="dark"
-      />
+      <div className="tiptap-editor" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+        <EditorContent editor={editor} />
+      </div>
     </div>
   )
 }

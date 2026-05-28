@@ -1,13 +1,12 @@
 'use client'
 
-import { useState, useEffect, useRef, useTransition } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import dynamic from 'next/dynamic'
 import { Plus, FileText, Pencil, Trash2, Check, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import type { Note } from '@/lib/types'
 
-// Dynamically import Blocknote editor (SSR: false — uses browser APIs)
+// Dynamically import TipTap editor (SSR: false — uses browser APIs)
 const NotesEditor = dynamic(
   () => import('./NotesEditor').then((m) => m.NotesEditor),
   {
@@ -20,6 +19,14 @@ const NotesEditor = dynamic(
   }
 )
 
+// Unified note shape for both tables
+interface NoteItem {
+  id: string
+  title: string
+  content: string  // HTML string
+  updatedAt: string
+}
+
 interface Props {
   clientId?: string
   projectId?: string
@@ -28,34 +35,64 @@ interface Props {
 
 export function NotesPanel({ clientId, projectId, createdBy }: Props) {
   const supabase = createClient()
-  const [notes, setNotes]           = useState<Note[]>([])
-  const [activeId, setActiveId]     = useState<string | null>(null)
-  const [loading, setLoading]       = useState(true)
+  const [notes, setNotes]               = useState<NoteItem[]>([])
+  const [activeId, setActiveId]         = useState<string | null>(null)
+  const [loading, setLoading]           = useState(true)
   const [editingTitle, setEditingTitle] = useState<string | null>(null)
-  const [titleDraft, setTitleDraft] = useState('')
-  const [, startTransition]         = useTransition()
+  const [titleDraft, setTitleDraft]     = useState('')
+  const [, startTransition]             = useTransition()
 
+  const useClientResources = Boolean(clientId)
   const activeNote = notes.find((n) => n.id === activeId) ?? null
 
   // ── Load notes ───────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
       setLoading(true)
-      const query = supabase
-        .from('notes')
-        .select('*')
-        .order('created_at', { ascending: true })
 
-      if (clientId)  query.eq('client_id',  clientId)
-      if (projectId) query.eq('project_id', projectId)
+      if (useClientResources) {
+        // client_resources table for client notes
+        const { data, error } = await supabase
+          .from('client_resources')
+          .select('id, title, content, updated_at')
+          .eq('client_id', clientId as string)
+          .eq('kind', 'note')
+          .order('created_at', { ascending: true })
 
-      const { data, error } = await query
-      if (error) {
-        toast.error('Error cargando notas')
-      } else {
-        setNotes(data as Note[])
-        if (data && data.length > 0) setActiveId(data[0].id)
+        if (error) {
+          toast.error('Error cargando notas')
+        } else {
+          const items: NoteItem[] = (data ?? []).map((r) => ({
+            id: r.id,
+            title: r.title,
+            content: (r.content as { html?: string } | null)?.html ?? '',
+            updatedAt: r.updated_at,
+          }))
+          setNotes(items)
+          if (items.length > 0) setActiveId(items[0]?.id ?? null)
+        }
+      } else if (projectId) {
+        // notes table for project notes
+        const { data, error } = await supabase
+          .from('notes')
+          .select('id, title, content_md, updated_at')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: true })
+
+        if (error) {
+          toast.error('Error cargando notas')
+        } else {
+          const items: NoteItem[] = (data ?? []).map((r) => ({
+            id: r.id,
+            title: r.title,
+            content: r.content_md ?? '',
+            updatedAt: r.updated_at,
+          }))
+          setNotes(items)
+          if (items.length > 0) setActiveId(items[0]?.id ?? null)
+        }
       }
+
       setLoading(false)
     }
     load()
@@ -64,25 +101,55 @@ export function NotesPanel({ clientId, projectId, createdBy }: Props) {
 
   // ── Create note ──────────────────────────────────────────────────────────────
   async function createNote() {
-    const { data, error } = await supabase
-      .from('notes')
-      .insert({
-        title: 'Nueva nota',
-        content_md: '',
-        client_id:  clientId  ?? null,
-        project_id: projectId ?? null,
-        created_by: createdBy,
-      })
-      .select()
-      .single()
+    if (useClientResources) {
+      const { data, error } = await supabase
+        .from('client_resources')
+        .insert({
+          title: 'Nueva nota',
+          content: { html: '' },
+          client_id: clientId as string,
+          kind: 'note',
+          created_by: createdBy,
+        })
+        .select('id, title, content, updated_at')
+        .single()
 
-    if (error) { toast.error('Error al crear nota'); return }
-    const note = data as Note
-    setNotes((prev) => [...prev, note])
-    setActiveId(note.id)
-    // Start editing title immediately
-    setEditingTitle(note.id)
-    setTitleDraft(note.title)
+      if (error) { toast.error('Error al crear nota'); return }
+      const item: NoteItem = {
+        id: data.id,
+        title: data.title,
+        content: (data.content as { html?: string } | null)?.html ?? '',
+        updatedAt: data.updated_at,
+      }
+      setNotes((prev) => [...prev, item])
+      setActiveId(item.id)
+      setEditingTitle(item.id)
+      setTitleDraft(item.title)
+    } else {
+      const { data, error } = await supabase
+        .from('notes')
+        .insert({
+          title: 'Nueva nota',
+          content_md: '',
+          project_id: projectId ?? null,
+          client_id: null,
+          created_by: createdBy,
+        })
+        .select('id, title, content_md, updated_at')
+        .single()
+
+      if (error) { toast.error('Error al crear nota'); return }
+      const item: NoteItem = {
+        id: data.id,
+        title: data.title,
+        content: data.content_md ?? '',
+        updatedAt: data.updated_at,
+      }
+      setNotes((prev) => [...prev, item])
+      setActiveId(item.id)
+      setEditingTitle(item.id)
+      setTitleDraft(item.title)
+    }
   }
 
   // ── Rename note ──────────────────────────────────────────────────────────────
@@ -90,7 +157,9 @@ export function NotesPanel({ clientId, projectId, createdBy }: Props) {
     const newTitle = titleDraft.trim() || 'Sin título'
     setEditingTitle(null)
     setNotes((prev) => prev.map((n) => n.id === noteId ? { ...n, title: newTitle } : n))
-    const { error } = await supabase.from('notes').update({ title: newTitle }).eq('id', noteId)
+
+    const table = useClientResources ? 'client_resources' : 'notes'
+    const { error } = await supabase.from(table).update({ title: newTitle }).eq('id', noteId)
     if (error) toast.error('Error al renombrar nota')
   }
 
@@ -99,30 +168,36 @@ export function NotesPanel({ clientId, projectId, createdBy }: Props) {
     if (!confirm('¿Eliminar esta nota?')) return
     setNotes((prev) => {
       const remaining = prev.filter((n) => n.id !== noteId)
-      const last = remaining[remaining.length - 1]
-      setActiveId(last ? last.id : null)
+      setActiveId(remaining[remaining.length - 1]?.id ?? null)
       return remaining
     })
-    const { error } = await supabase.from('notes').delete().eq('id', noteId)
+    const table = useClientResources ? 'client_resources' : 'notes'
+    const { error } = await supabase.from(table).delete().eq('id', noteId)
     if (error) toast.error('Error al eliminar nota')
   }
 
   // ── Autosave content ─────────────────────────────────────────────────────────
-  function handleContentChange(markdown: string) {
+  function handleContentChange(html: string) {
     if (!activeId) return
-    // Optimistic update
-    setNotes((prev) => prev.map((n) => n.id === activeId ? { ...n, content_md: markdown } : n))
-    // Debounced save already handled in NotesEditor; just persist here
+    setNotes((prev) => prev.map((n) => n.id === activeId ? { ...n, content: html } : n))
     startTransition(async () => {
-      const { error } = await supabase
-        .from('notes')
-        .update({ content_md: markdown })
-        .eq('id', activeId)
-      if (error) toast.error('Error al guardar nota')
+      if (useClientResources) {
+        const { error } = await supabase
+          .from('client_resources')
+          .update({ content: { html } })
+          .eq('id', activeId)
+        if (error) toast.error('Error al guardar nota')
+      } else {
+        const { error } = await supabase
+          .from('notes')
+          .update({ content_md: html })
+          .eq('id', activeId)
+        if (error) toast.error('Error al guardar nota')
+      }
     })
   }
 
-  // ── Empty state ──────────────────────────────────────────────────────────────
+  // ── Loading state ─────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div style={{ padding: '32px', textAlign: 'center', color: 'var(--t3)', fontSize: 'var(--text-sm)' }}>
@@ -134,7 +209,7 @@ export function NotesPanel({ clientId, projectId, createdBy }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-      {/* Notes list header */}
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           Notas {notes.length > 0 && <span style={{ fontWeight: 400, marginLeft: '4px' }}>({notes.length})</span>}
@@ -191,7 +266,6 @@ export function NotesPanel({ clientId, projectId, createdBy }: Props) {
                     transition: 'border-color 120ms, background 120ms',
                     boxShadow: isActive ? '0 0 0 1px var(--acc)' : 'none',
                   }}
-                  className="note-row"
                   onMouseEnter={(e) => {
                     if (!isActive) {
                       e.currentTarget.style.borderColor = 'var(--acc)'
@@ -214,7 +288,7 @@ export function NotesPanel({ clientId, projectId, createdBy }: Props) {
                         value={titleDraft}
                         onChange={(e) => setTitleDraft(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') commitRename(note.id)
+                          if (e.key === 'Enter') void commitRename(note.id)
                           if (e.key === 'Escape') setEditingTitle(null)
                         }}
                         onClick={(e) => e.stopPropagation()}
@@ -222,7 +296,7 @@ export function NotesPanel({ clientId, projectId, createdBy }: Props) {
                         style={{ flex: 1, padding: '2px 6px', fontSize: 'var(--text-sm)', height: '24px' }}
                       />
                       <button
-                        onClick={(e) => { e.stopPropagation(); commitRename(note.id) }}
+                        onClick={(e) => { e.stopPropagation(); void commitRename(note.id) }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: 'var(--ok)', display: 'flex' }}
                       ><Check size={13} /></button>
                       <button
@@ -236,7 +310,7 @@ export function NotesPanel({ clientId, projectId, createdBy }: Props) {
                         {note.title}
                       </span>
                       <span style={{ fontSize: '10px', color: 'var(--t3)', fontFamily: 'var(--mono)', flexShrink: 0 }}>
-                        {new Date(note.updated_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
+                        {new Date(note.updatedAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
                       </span>
                       <button
                         onClick={(e) => { e.stopPropagation(); setEditingTitle(note.id); setTitleDraft(note.title) }}
@@ -245,7 +319,7 @@ export function NotesPanel({ clientId, projectId, createdBy }: Props) {
                         title="Renombrar"
                       ><Pencil size={11} /></button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); deleteNote(note.id) }}
+                        onClick={(e) => { e.stopPropagation(); void deleteNote(note.id) }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: 'var(--t3)', display: 'flex', opacity: 0 }}
                         className="note-action-btn"
                         title="Eliminar"
@@ -257,15 +331,13 @@ export function NotesPanel({ clientId, projectId, createdBy }: Props) {
             })}
           </div>
 
-          {/* Editor for active note */}
+          {/* TipTap editor for active note */}
           {activeNote && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-              <NotesEditor
-                key={activeNote.id}
-                content={activeNote.content_md}
-                onChange={handleContentChange}
-              />
-            </div>
+            <NotesEditor
+              key={activeNote.id}
+              content={activeNote.content}
+              onChange={handleContentChange}
+            />
           )}
         </>
       )}

@@ -4,8 +4,8 @@ import type { MemberName } from '@/lib/types'
 // Map of email → display name for the team
 const TEAM_NAMES: Record<string, MemberName> = {
   'franco.sanmartin@maniaco.online': 'Franco',
-  'lucho@maniaco.online': 'Lucho',
-  'noe@maniaco.online': 'Noe',
+  'luis.giannasi@maniaco.online':    'Lucho',
+  'noelia.bottallo@maniaco.online':  'Noe',
 }
 
 /**

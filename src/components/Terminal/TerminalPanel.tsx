@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react
 import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 import { Minus, Maximize2, ChevronDown, X, RotateCw } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 import { useTerminalStore } from '@/stores/terminalStore'
 import type { TerminalSession } from '@/stores/terminalStore'
 import { TerminalTab } from './TerminalTab'
@@ -184,6 +185,28 @@ export function TerminalPanel() {
   const setOpen         = useTerminalStore((s) => s.setOpen)
   const openSession     = useTerminalStore((s) => s.openSession)
 
+  const pathname = usePathname()
+
+  // Personal sessions always visible; project sessions only on their route
+  const visibleSessions = sessions.filter(
+    (s) => s.clientSlug === '' || (typeof s.projectId === 'string' && pathname.includes(s.projectId))
+  )
+
+  // Auto-minimize when no visible sessions for current route
+  useEffect(() => {
+    if (sessions.length > 0 && visibleSessions.length === 0) {
+      setMinimized(true)
+    }
+  }, [visibleSessions.length, sessions.length, setMinimized])
+
+  // Switch active session to first visible when active is out of scope
+  useEffect(() => {
+    const first = visibleSessions[0]
+    if (first && !visibleSessions.some((s) => s.id === activeId)) {
+      switchToSession(first.id)
+    }
+  }, [visibleSessions, activeId, switchToSession])
+
   const [heightVh, setHeightVh]       = useState(40)
   const [isFullscreen, setFullscreen] = useState(false)
   // Animate panel open: start at 0, jump to target after first paint
@@ -292,9 +315,9 @@ export function TerminalPanel() {
           userSelect: 'none',
         }}
       >
-        {/* Tabs */}
+        {/* Tabs — only sessions in scope for this route */}
         <div style={{ display: 'flex', flex: 1, overflowX: 'auto', minWidth: 0 }}>
-          {sessions.map((s) => (
+          {visibleSessions.map((s) => (
             <TerminalTab
               key={s.id}
               session={s}

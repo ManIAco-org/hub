@@ -11,6 +11,7 @@ import {
 import type { Project } from '@/lib/types'
 import { useTerminalStore } from '@/stores/terminalStore'
 import { NotesPanel } from './NotesPanel'
+import { setPresenceLabel } from '@/lib/presenceLabel'
 
 type Tab = 'resumen' | 'tareas' | 'archivos' | 'notas' | 'deploys' | 'mcp' | 'terminal' | 'settings'
 
@@ -389,6 +390,12 @@ function ManagedField({ label, value, hint }: { label: string; value: string; hi
 // ─── Main Panel ──────────────────────────────────────────────────────────────
 export function ProjectDetailPanel({ project }: { project: Project }) {
   const [activeTab, setActiveTab] = useState<Tab>('resumen')
+
+  // Set presence label so auto-tracker shows "En [project] · [client]"
+  useEffect(() => {
+    setPresenceLabel(`En ${project.name} · ${project.client_name}`)
+    return () => setPresenceLabel(null)
+  }, [project.id, project.name, project.client_name])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>

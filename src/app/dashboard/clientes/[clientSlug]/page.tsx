@@ -63,6 +63,7 @@ export default async function ClientDetailPage({
           clientSlug={clientSlug}
           projects={clientProjects}
           createdBy={createdBy}
+          ownerEmail={createdBy}
         />
       </div>
     </>

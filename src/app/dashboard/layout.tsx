@@ -1,14 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TerminalPanelWrapper } from '@/components/Terminal/TerminalPanelWrapper'
+import { PresenceTracker } from '@/components/layout/PresenceTracker'
 import type { ReactNode } from 'react'
 
 // Display names shown in sidebar footer — full name by email
 const DISPLAY_NAMES: Record<string, string> = {
   'franco.sanmartin@maniaco.online': 'Franco San Martín',
-  'lucho@maniaco.online': 'Luis Giannasi',
-  'noe@maniaco.online': 'Noelia Bottallo',
-  'contacto@maniaco.online': 'ManIAcos',
+  'luis.giannasi@maniaco.online':    'Luis Giannasi',
+  'noelia.bottallo@maniaco.online':  'Noelia Bottallo',
+  'contacto@maniaco.online':         'ManIAcos',
 }
 
 function getDisplayName(email: string): string {
@@ -49,6 +50,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
       {/* Terminal panel — client component, persistent across routes */}
       <TerminalPanelWrapper />
+      {/* Auto-presence tracker — updates team_status on activity + route change */}
+      <PresenceTracker userEmail={user?.email ?? ''} />
     </div>
   )
 }
