@@ -1,12 +1,15 @@
 'use client'
 
+import { useRouter, usePathname } from 'next/navigation'
 import { useTerminalStore } from '@/stores/terminalStore'
 
 export function TerminalChip() {
-  const sessions = useTerminalStore((s) => s.sessions)
+  const router    = useRouter()
+  const pathname  = usePathname()
+  const sessions        = useTerminalStore((s) => s.sessions)
   const activeSessionId = useTerminalStore((s) => s.activeSessionId)
-  const setMinimized = useTerminalStore((s) => s.setMinimized)
-  const setOpen = useTerminalStore((s) => s.setOpen)
+  const setMinimized    = useTerminalStore((s) => s.setMinimized)
+  const setOpen         = useTerminalStore((s) => s.setOpen)
 
   const active = sessions.find((s) => s.id === activeSessionId) ?? sessions[0]
   const totalUnread = sessions.reduce((sum, s) => sum + s.unread, 0)
@@ -15,9 +18,29 @@ export function TerminalChip() {
 
   const isConnected = active.status === 'connected'
 
+  if (!active) return null
+
+  // If this is a project session and we're not on its route, clicking navigates there.
+  // The TerminalPanel then auto-un-minimizes because the session becomes visible.
+  const isProjectSession = Boolean(active.projectId)
+  const onCorrectRoute   = isProjectSession && typeof active.projectId === 'string'
+    ? pathname.includes(active.projectId)
+    : true
+
+  function handleClick() {
+    if (isProjectSession && !onCorrectRoute && typeof active?.projectId === 'string') {
+      // Navigate to the project page — TerminalPanel will unmute the panel on arrival
+      router.push(`/dashboard/proyectos/${active.projectId}`)
+      setMinimized(false)
+    } else {
+      setOpen(true)
+      setMinimized(false)
+    }
+  }
+
   return (
     <button
-      onClick={() => { setOpen(true); setMinimized(false) }}
+      onClick={handleClick}
       style={{
         position: 'fixed',
         bottom: '20px',
@@ -50,17 +73,21 @@ export function TerminalChip() {
       <span style={{ fontSize: '14px' }}>💻</span>
 
       {/* session label */}
-      <span style={{ color: '#EFEFEF', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ color: '#EFEFEF', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {active.label}
       </span>
 
       {/* separator */}
       <span style={{ color: '#374151' }}>·</span>
 
-      {/* status */}
-      <span style={{ color: isConnected ? '#A3E635' : '#F59E0B', fontSize: '11px' }}>
-        {isConnected ? 'activo' : active.status === 'error' ? 'error' : 'conectando'}
-      </span>
+      {/* status — or navigation hint when out of scope */}
+      {isProjectSession && !onCorrectRoute ? (
+        <span style={{ color: '#06B6D4', fontSize: '11px' }}>ir al proyecto →</span>
+      ) : (
+        <span style={{ color: isConnected ? '#A3E635' : '#F59E0B', fontSize: '11px' }}>
+          {isConnected ? 'activo' : active.status === 'error' ? 'error' : 'conectando'}
+        </span>
+      )}
 
       {/* unread badge */}
       {totalUnread > 0 && (

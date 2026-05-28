@@ -62,6 +62,7 @@ export function NotesEditor({ content, onChange }: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const editor = useEditor({
+    immediatelyRender: false,   // required for Next.js 15 — prevents hydration mismatch
     extensions: [
       StarterKit,
       Placeholder.configure({ placeholder: 'Escribí algo...' }),

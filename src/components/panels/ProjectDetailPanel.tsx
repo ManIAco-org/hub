@@ -220,35 +220,161 @@ function TabMcp({ project }: { project: Project }) {
 }
 
 // ─── Tab: Terminal ────────────────────────────────────────────────────────────
+function formatRelativeTime(ms: number | undefined): string {
+  if (!ms) return 'Sin actividad'
+  const diff = Date.now() - ms
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'ahora mismo'
+  if (mins < 60) return `hace ${mins}m`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `hace ${hrs}h`
+  return `hace ${Math.floor(hrs / 24)}d`
+}
+
 function TabTerminal({ project }: { project: Project }) {
-  const openStore = useTerminalStore((s) => s.openSession)
-  const setOpen   = useTerminalStore((s) => s.setOpen)
-  const setMin    = useTerminalStore((s) => s.setMinimized)
-  const sessions  = useTerminalStore((s) => s.sessions)
+  const openSession     = useTerminalStore((s) => s.openSession)
+  const closeSession    = useTerminalStore((s) => s.closeSession)
+  const switchToSession = useTerminalStore((s) => s.switchToSession)
+  const setOpen         = useTerminalStore((s) => s.setOpen)
+  const setMin          = useTerminalStore((s) => s.setMinimized)
+  const sessions        = useTerminalStore((s) => s.sessions)
 
-  const clientSlug: string = project.server_path
-    ? project.server_path.replace('/srv/maniacos/', '').split('/')[0] ?? project.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-    : project.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-  const sessionId = `project-${project.id}`
+  // clientSlug = full relative path under /srv/maniacos/
+  // e.g. /srv/maniacos/clientes/maniaco/hub → clientSlug = 'clientes/maniaco/hub'
+  const clientSlug = project.server_path
+    ? project.server_path.replace('/srv/maniacos/', '')
+    : ''
 
-  // Auto-open on mount — no button needed
-  useEffect(() => {
-    const isOpen = sessions.some((s) => s.id === sessionId)
-    if (isOpen) {
-      setOpen(true)
-      setMin(false)
-    } else {
-      openStore({ id: sessionId, clientSlug, projectId: project.id, label: project.name })
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const projectSessions = sessions.filter((s) => s.projectId === project.id)
+
+  if (!project.server_path) {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        padding: '60px 20px', gap: '12px', textAlign: 'center',
+      }}>
+        <Terminal size={32} color="var(--t3)" />
+        <p style={{ color: 'var(--t2)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+          Terminal no disponible
+        </p>
+        <p style={{ color: 'var(--t3)', fontSize: 'var(--text-xs)', maxWidth: '320px' }}>
+          La ruta Oracle se asigna automáticamente al crear el proyecto con un cliente vinculado.
+          Verificá en Settings que <code style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>server_path</code> esté configurado.
+        </p>
+      </div>
+    )
+  }
+
+  function handleNewSession() {
+    const sessionId = `project-${project.id}-${Date.now()}`
+    openSession({
+      id: sessionId,
+      clientSlug,
+      projectId: project.id,
+      label: project.name,
+    })
+  }
+
+  function handleOpen(sessionId: string) {
+    switchToSession(sessionId)
+    setOpen(true)
+    setMin(false)
+  }
+
+  function handleClose(sessionId: string) {
+    closeSession(sessionId)
+  }
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '48px 20px', color: 'var(--t3)',
-      fontFamily: 'var(--mono)', fontSize: 'var(--text-sm)',
-    }}>
-      Abriendo terminal...
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '640px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <p style={{ fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-sm)', marginBottom: '2px' }}>
+            Terminal del proyecto
+          </p>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--t3)' }}>
+            {project.server_path}
+          </code>
+        </div>
+        <button
+          onClick={handleNewSession}
+          className="btn-primary"
+          style={{ fontSize: 'var(--text-sm)', padding: '8px 14px' }}
+        >
+          + Nueva sesión
+        </button>
+      </div>
+
+      {/* Sessions list */}
+      {projectSessions.length === 0 ? (
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: '12px', padding: '52px 20px', textAlign: 'center',
+          background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r12)',
+        }}>
+          <Terminal size={28} color="var(--t3)" />
+          <p style={{ fontWeight: 600, color: 'var(--t2)', fontSize: 'var(--text-sm)' }}>
+            Sin sesiones abiertas
+          </p>
+          <p style={{ color: 'var(--t3)', fontSize: 'var(--text-xs)' }}>
+            Abrí una nueva sesión para empezar a trabajar en este proyecto.
+          </p>
+          <button onClick={handleNewSession} className="btn-primary" style={{ fontSize: 'var(--text-xs)', padding: '7px 16px', marginTop: '4px' }}>
+            + Nueva sesión
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {projectSessions.map((s) => {
+            const statusColor =
+              s.status === 'connected'    ? '#A3E635'
+              : s.status === 'connecting' ? '#06B6D4'
+              : s.status === 'error'      ? '#EF4444'
+              : '#525866'
+            return (
+              <div
+                key={s.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '14px',
+                  padding: '14px 16px',
+                  background: 'var(--s2)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--r12)', boxShadow: 'var(--shadow-sm)',
+                }}
+              >
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.label}
+                  </p>
+                  <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '2px', fontFamily: 'var(--mono)' }}>
+                    {s.cwd ? `📁 ${s.cwd.split('/').slice(-2).join('/')}` : formatRelativeTime(s.lastActivityAt)}
+                    {s.gitBranch && s.gitBranch !== 'HEAD' && <span style={{ marginLeft: '10px' }}>🌿 {s.gitBranch}</span>}
+                  </p>
+                </div>
+                {s.unread > 0 && (
+                  <span style={{ background: 'var(--acc)', color: '#000', borderRadius: '10px', fontSize: '10px', fontWeight: 700, padding: '1px 6px', flexShrink: 0 }}>
+                    {s.unread}
+                  </span>
+                )}
+                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                  <button onClick={() => handleOpen(s.id)} className="btn-secondary" style={{ fontSize: 'var(--text-xs)', padding: '5px 12px' }}>
+                    Abrir
+                  </button>
+                  <button
+                    onClick={() => handleClose(s.id)}
+                    style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--r6)', cursor: 'pointer', color: 'var(--t3)', fontSize: 'var(--text-xs)', padding: '5px 10px', transition: 'color 120ms, border-color 120ms' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.borderColor = '#EF4444' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

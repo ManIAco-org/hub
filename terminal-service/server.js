@@ -261,7 +261,22 @@ wss.on('connection', (ws, req) => {
     }
     cwd = resolved
 
-    // ── FIX 2: Validate cwd exists before spawning ─────────────────────────
+    // ── Auto-create project directory if under /srv/maniacos/clientes/ ────
+    // Server runs as root via systemd — safe to mkdir + chown.
+    if (!fs.existsSync(cwd)) {
+      if (cwd.startsWith(ROOT_PATH + '/clientes/') || cwd.startsWith(ROOT_PATH + '/personal/')) {
+        console.log(`[terminal] mkdir -p ${cwd}`)
+        try {
+          fs.mkdirSync(cwd, { recursive: true, mode: 0o2775 })
+          // Attempt chown to linux user + maniacos group (gid 2000 by default)
+          const maniacosGid = parseInt(process.env.GID_MANIACOS ?? '2000', 10)
+          try { fs.chownSync(cwd, userInfo.uid, maniacosGid) } catch { /* best-effort */ }
+        } catch (mkdirErr) {
+          console.error(`[terminal] mkdir failed: ${mkdirErr.message}`)
+        }
+      }
+    }
+
     if (!fs.existsSync(cwd)) {
       const hint = `sudo mkdir -p ${cwd} && sudo chown ${userInfo.linuxUser}:maniacos ${cwd}`
       console.error(`[terminal] cwd not found: ${cwd}`)
@@ -278,9 +293,11 @@ wss.on('connection', (ws, req) => {
       ? rawSlug.replace(/[^a-z0-9_-]/gi, '_').slice(0, 40)
       : `personal_${userInfo.linuxUser}`
     const stableSession = `maniaco_${userInfo.linuxUser}_${slugSafe}`
-    // newSession=true → unique name (no -A), fresh pty; false → attach-or-create (-A)
+    // newSession=true → unique name (no -A) = completely fresh terminal
+    // newSession=false → stable name with -A = attach-or-create (resume)
     const wantsNew = msg.newSession !== false
     sessionName = wantsNew ? `${stableSession}_${Date.now()}` : stableSession
+    console.log(`[terminal] newSession=${msg.newSession} → wantsNew=${wantsNew} → tmuxSession=${sessionName}`)
 
     const cols = Math.max(20, Math.min(500, msg.cols ?? 220))
     const rows = Math.max(5,  Math.min(200, msg.rows ?? 50))
@@ -400,7 +417,7 @@ async function auditLog(email, linuxUser, sessionName, event) {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[terminal] v1.3.0 listening on 127.0.0.1:${PORT}`)
+  console.log(`[terminal] v1.4.0 listening on 127.0.0.1:${PORT}`)
   if (!SUPABASE_URL)     console.warn('[terminal] ⚠ SUPABASE_URL not set — auth will fail')
   if (!SUPABASE_SVC_KEY) console.warn('[terminal] ⚠ SUPABASE_SERVICE_ROLE_KEY not set — auth + audit log disabled')
   if (supabase)          console.log('[terminal] Supabase client ready (auth via getUser)')
