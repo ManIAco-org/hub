@@ -210,8 +210,8 @@ export function ConfiguracionPanel() {
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {[
               { user: 'franco', email: 'franco.sanmartin@maniaco.online', plan: 'Max', status: 'ok' },
-              { user: 'lucho',  email: 'lucho@maniaco.online',            plan: 'Pro', status: 'ok' },
-              { user: 'noe',    email: 'noe@maniaco.online',              plan: 'Pro', status: 'ok' },
+              { user: 'lucho',  email: 'luis.giannasi@maniaco.online',   plan: 'Pro', status: 'ok' },
+              { user: 'noe',    email: 'noelia.bottallo@maniaco.online', plan: 'Pro', status: 'ok' },
             ].map((m, i) => (
               <div key={m.user} style={{
                 display: 'flex', alignItems: 'center', gap: '14px',

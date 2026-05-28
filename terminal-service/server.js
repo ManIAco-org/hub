@@ -42,6 +42,7 @@ const ROOT_PATH             = '/srv/maniacos'
 
 // ── User map ─────────────────────────────────────────────────────────────────
 // Supabase email → Linux identity on Oracle ARM.
+// contacto@maniaco.online is intentionally absent — institutional account, no terminal.
 // UIDs/GIDs are configurable via env vars; defaults match a typical fresh Ubuntu
 // where the first non-root user gets 1000. Run `id <user>` on Oracle to confirm.
 const USER_MAP = {
@@ -51,13 +52,13 @@ const USER_MAP = {
     gid       : parseInt(process.env.GID_FRANCO ?? '1000', 10),
     home      : '/home/franco',
   },
-  'lucho@maniaco.online': {
+  'luis.giannasi@maniaco.online': {
     linuxUser : 'lucho',
     uid       : parseInt(process.env.UID_LUCHO  ?? '1001', 10),
     gid       : parseInt(process.env.GID_LUCHO  ?? '1001', 10),
     home      : '/home/lucho',
   },
-  'noe@maniaco.online': {
+  'noelia.bottallo@maniaco.online': {
     linuxUser : 'noe',
     uid       : parseInt(process.env.UID_NOE    ?? '1002', 10),
     gid       : parseInt(process.env.GID_NOE    ?? '1002', 10),
@@ -220,7 +221,11 @@ wss.on('connection', (ws, req) => {
     console.log('[auth] token valid for:', userEmail)
 
     if (!userInfo) {
-      sendJson({ type: 'auth_error', message: `Usuario ${userEmail} no autorizado` })
+      const msg = userEmail === 'contacto@maniaco.online'
+        ? 'Cuenta institucional sin terminal. Usá tu mail personal @maniaco.online'
+        : `Usuario ${userEmail} no autorizado`
+      console.warn('[auth] rejected:', userEmail)
+      sendJson({ type: 'auth_error', message: msg })
       ws.close(1008, 'unauthorized email')
       return
     }
