@@ -1,7 +1,7 @@
 'use strict'
 
 /**
- * ManIAcos Terminal Service — v1.1.0
+ * ManIAcos Terminal Service — v1.2.0
  * WebSocket server: Express + ws + node-pty + Supabase Auth
  *
  * Protocol:
@@ -17,6 +17,7 @@
 
 const http    = require('http')
 const path    = require('path')
+const fs      = require('fs')
 const express = require('express')
 const { WebSocketServer } = require('ws')
 const pty     = require('node-pty')
@@ -259,6 +260,18 @@ wss.on('connection', (ws, req) => {
     }
     cwd = resolved
 
+    // ── FIX 2: Validate cwd exists before spawning ─────────────────────────
+    if (!fs.existsSync(cwd)) {
+      const hint = `sudo mkdir -p ${cwd} && sudo chown ${userInfo.linuxUser}:maniacos ${cwd}`
+      console.error(`[terminal] cwd not found: ${cwd}`)
+      sendJson({
+        type: 'auth_error',
+        message: `Carpeta del proyecto no existe en el servidor: ${cwd}\nCrear con: ${hint}`,
+      })
+      ws.close(1008, 'cwd not found')
+      return
+    }
+
     // ── Build tmux session name ────────────────────────────────────────────
     const slugSafe = rawSlug
       ? rawSlug.replace(/[^a-z0-9_-]/gi, '_').slice(0, 40)
@@ -268,9 +281,25 @@ wss.on('connection', (ws, req) => {
     const cols = Math.max(20, Math.min(500, msg.cols ?? 220))
     const rows = Math.max(5,  Math.min(200, msg.rows ?? 50))
 
+    // ── FIX 1: Session startup command ────────────────────────────────────
+    // New sessions auto-launch claude. Existing sessions (tmux -A attach)
+    // ignore the command — the user is already in their running claude session.
+    // If claude is not installed for this user, falls back to bash with a clear message.
+    const sessionCmd = [
+      'bash', '-c',
+      [
+        `cd ${JSON.stringify(cwd)}`,
+        'source ~/.bashrc 2>/dev/null || true',
+        '/srv/maniacos/hub/hooks/session-start.sh 2>/dev/null || true',
+        // exec claude → replaces shell; exit closes the terminal cleanly.
+        // Falls back to bash with a warning if claude is missing.
+        `exec claude 2>/dev/null || (printf '\\033[33m[ claude no encontrado para ${userInfo.linuxUser} — instalá con: npm i -g @anthropic-ai/claude-code ]\\033[0m\\r\\n'; exec bash)`,
+      ].join(' && '),
+    ]
+
     // ── Spawn tmux (-A = attach if exists, create if not) ──────────────────
     try {
-      ptyProc = pty.spawn('tmux', ['new-session', '-A', '-s', sessionName], {
+      ptyProc = pty.spawn('tmux', ['new-session', '-A', '-s', sessionName, ...sessionCmd], {
         name   : 'xterm-256color',
         cols, rows, cwd,
         env    : {
@@ -354,7 +383,7 @@ async function auditLog(email, linuxUser, sessionName, event) {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[terminal] v1.1.0 listening on 127.0.0.1:${PORT}`)
+  console.log(`[terminal] v1.2.0 listening on 127.0.0.1:${PORT}`)
   if (!SUPABASE_URL)     console.warn('[terminal] ⚠ SUPABASE_URL not set — auth will fail')
   if (!SUPABASE_SVC_KEY) console.warn('[terminal] ⚠ SUPABASE_SERVICE_ROLE_KEY not set — auth + audit log disabled')
   if (supabase)          console.log('[terminal] Supabase client ready (auth via getUser)')
