@@ -23,10 +23,16 @@ const pty     = require('node-pty')
 const jwt     = require('jsonwebtoken')
 
 // ── Config ───────────────────────────────────────────────────────────────────
-const PORT             = parseInt(process.env.PORT              ?? '3001', 10)
-const JWT_SECRET       = process.env.SUPABASE_JWT_SECRET        ?? ''
-const SUPABASE_URL     = process.env.SUPABASE_URL               ?? ''
-const SUPABASE_SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY  ?? ''
+const PORT                = parseInt(process.env.PORT              ?? '3001', 10)
+const SUPABASE_URL        = process.env.SUPABASE_URL               ?? ''
+const SUPABASE_SVC_KEY    = process.env.SUPABASE_SERVICE_ROLE_KEY  ?? ''
+
+// Supabase JWT secret is base64-encoded in the dashboard/env.
+// jsonwebtoken needs raw bytes (Buffer) to verify HS256 signatures correctly.
+const _JWT_SECRET_RAW = process.env.SUPABASE_JWT_SECRET ?? ''
+const JWT_SECRET = _JWT_SECRET_RAW
+  ? Buffer.from(_JWT_SECRET_RAW, 'base64')
+  : ''
 
 const MAX_SESSIONS_PER_USER = 3
 const HEARTBEAT_MS          = 30_000           // 30 s
@@ -156,7 +162,7 @@ wss.on('connection', (ws, req) => {
         // Log real error: visible in `docker logs maniaco-terminal`
         console.error('[auth] JWT verify failed:', err.name, '-', err.message,
           '| token_len:', msg.token?.length ?? 0,
-          '| secret_len:', JWT_SECRET.length,
+          '| secret_bytes:', JWT_SECRET.length,
           '| clientSlug:', JSON.stringify(msg.clientSlug))
         sendJson({ type: 'auth_error', message: `Token inválido (${err.name}: ${err.message})` })
         ws.close(1008, 'invalid token')
@@ -334,12 +340,14 @@ async function auditLog(email, linuxUser, sessionName, event) {
 // ── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[terminal] v1.0.0 listening on 127.0.0.1:${PORT}`)
-  if (!JWT_SECRET) {
+  if (!JWT_SECRET || JWT_SECRET.length === 0) {
     console.warn('[terminal] ⚠ SUPABASE_JWT_SECRET not set — all auth will fail')
   } else {
-    // Show first 4 + last 4 chars so you can verify it loaded without exposing the full secret
-    const preview = JWT_SECRET.slice(0, 4) + '...' + JWT_SECRET.slice(-4)
-    console.log(`[terminal] JWT secret loaded (len=${JWT_SECRET.length}, preview=${preview})`)
+    // Buffer.length = decoded byte count (should be ~64 for a 88-char base64 secret)
+    // Shows first/last hex chars to confirm it decoded without exposing the full value
+    const hex = JWT_SECRET.toString('hex')
+    const preview = hex.slice(0, 8) + '...' + hex.slice(-8)
+    console.log(`[terminal] JWT secret loaded (raw_b64_len=${_JWT_SECRET_RAW.length}, decoded_bytes=${JWT_SECRET.length}, hex_preview=${preview})`)
   }
   if (!SUPABASE_SVC_KEY) console.warn('[terminal] ⚠ SUPABASE_SERVICE_ROLE_KEY not set — audit log disabled')
 })
