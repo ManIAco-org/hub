@@ -153,7 +153,12 @@ wss.on('connection', (ws, req) => {
       try {
         payload = jwt.verify(msg.token, JWT_SECRET, { algorithms: ['HS256'] })
       } catch (err) {
-        sendJson({ type: 'auth_error', message: 'Token inválido' })
+        // Log real error: visible in `docker logs maniaco-terminal`
+        console.error('[auth] JWT verify failed:', err.name, '-', err.message,
+          '| token_len:', msg.token?.length ?? 0,
+          '| secret_len:', JWT_SECRET.length,
+          '| clientSlug:', JSON.stringify(msg.clientSlug))
+        sendJson({ type: 'auth_error', message: `Token inválido (${err.name}: ${err.message})` })
         ws.close(1008, 'invalid token')
         return
       }
@@ -329,7 +334,13 @@ async function auditLog(email, linuxUser, sessionName, event) {
 // ── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[terminal] v1.0.0 listening on 127.0.0.1:${PORT}`)
-  if (!JWT_SECRET)       console.warn('[terminal] ⚠ SUPABASE_JWT_SECRET not set')
+  if (!JWT_SECRET) {
+    console.warn('[terminal] ⚠ SUPABASE_JWT_SECRET not set — all auth will fail')
+  } else {
+    // Show first 4 + last 4 chars so you can verify it loaded without exposing the full secret
+    const preview = JWT_SECRET.slice(0, 4) + '...' + JWT_SECRET.slice(-4)
+    console.log(`[terminal] JWT secret loaded (len=${JWT_SECRET.length}, preview=${preview})`)
+  }
   if (!SUPABASE_SVC_KEY) console.warn('[terminal] ⚠ SUPABASE_SERVICE_ROLE_KEY not set — audit log disabled')
 })
 
