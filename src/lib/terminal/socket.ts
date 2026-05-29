@@ -17,6 +17,8 @@ export interface ConnectOptions {
   rows: number
   /** true (default) = fresh tmux session; false = attach-or-create (-A) */
   newSession?: boolean
+  /** Exact tmux session name to attach to (overrides newSession when provided) */
+  targetSession?: string
   onData: (data: string) => void
   onReady: (info: TerminalReadyInfo) => void
   onError: (msg: string) => void
@@ -69,7 +71,7 @@ export function connectTerminal(opts: ConnectOptions): TerminalSocket {
       if (msg) {
         switch (msg.type) {
           case 'ready': {
-            const authPayload = {
+            const authPayload: Record<string, unknown> = {
               type: 'auth',
               token: opts.jwt,
               clientSlug: opts.clientSlug,   // "" = personal, else project slug
@@ -77,6 +79,7 @@ export function connectTerminal(opts: ConnectOptions): TerminalSocket {
               rows: opts.rows,
               newSession: opts.newSession ?? true,
             }
+            if (opts.targetSession) authPayload.targetSession = opts.targetSession
             // Diagnostic log — visible in browser DevTools Console
             console.log('[WS-AUTH] token len:', opts.jwt?.length,
               'clientSlug:', JSON.stringify(opts.clientSlug),

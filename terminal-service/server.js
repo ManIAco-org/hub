@@ -37,7 +37,7 @@ const supabase = SUPABASE_URL && SUPABASE_SVC_KEY
     })
   : null
 
-const MAX_SESSIONS_PER_USER = 3
+const MAX_SESSIONS_PER_USER = 10
 const HEARTBEAT_MS          = 30_000           // 30 s
 const IDLE_TIMEOUT_MS       = 30 * 60 * 1_000  // 30 min
 const ROOT_PATH             = '/srv/maniacos'
@@ -293,11 +293,28 @@ wss.on('connection', (ws, req) => {
       ? rawSlug.replace(/[^a-z0-9_-]/gi, '_').slice(0, 40)
       : `personal_${userInfo.linuxUser}`
     const stableSession = `maniaco_${userInfo.linuxUser}_${slugSafe}`
-    // newSession=true → unique name (no -A) = completely fresh terminal
-    // newSession=false → stable name with -A = attach-or-create (resume)
-    const wantsNew = msg.newSession !== false
-    sessionName = wantsNew ? `${stableSession}_${Date.now()}` : stableSession
-    console.log(`[terminal] newSession=${msg.newSession} → wantsNew=${wantsNew} → tmuxSession=${sessionName}`)
+
+    let wantsNew
+    if (msg.targetSession && typeof msg.targetSession === 'string') {
+      // Client specifies an exact tmux session to reattach to (switch-session flow).
+      // Security: name must be owned by this linux user.
+      const target = msg.targetSession.trim()
+      if (target.startsWith(`maniaco_${userInfo.linuxUser}_`)) {
+        sessionName = target
+        wantsNew = false  // always use -A when reattaching a known session
+        console.log(`[terminal] targetSession=${sessionName} → reattach mode`)
+      } else {
+        sendJson({ type: 'auth_error', message: 'Sesión no autorizada' })
+        ws.close(1008, 'unauthorized target session')
+        return
+      }
+    } else {
+      // newSession=true → unique name (no -A) = completely fresh terminal
+      // newSession=false → stable name with -A = attach-or-create (resume)
+      wantsNew = msg.newSession !== false
+      sessionName = wantsNew ? `${stableSession}_${Date.now()}` : stableSession
+      console.log(`[terminal] newSession=${msg.newSession} → wantsNew=${wantsNew} → tmuxSession=${sessionName}`)
+    }
 
     const cols = Math.max(20, Math.min(500, msg.cols ?? 220))
     const rows = Math.max(5,  Math.min(200, msg.rows ?? 50))
@@ -417,7 +434,7 @@ async function auditLog(email, linuxUser, sessionName, event) {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[terminal] v1.4.0 listening on 127.0.0.1:${PORT}`)
+  console.log(`[terminal] v1.5.0 listening on 127.0.0.1:${PORT}`)
   if (!SUPABASE_URL)     console.warn('[terminal] ⚠ SUPABASE_URL not set — auth will fail')
   if (!SUPABASE_SVC_KEY) console.warn('[terminal] ⚠ SUPABASE_SERVICE_ROLE_KEY not set — auth + audit log disabled')
   if (supabase)          console.log('[terminal] Supabase client ready (auth via getUser)')

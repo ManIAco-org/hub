@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, FolderKanban, ChevronRight, Clock } from 'lucide-react'
+import { Building2, FolderKanban, ChevronRight, Clock, Plus, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { toSlug } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import type { Project, ProjectStatus } from '@/lib/types'
 
 interface ClientGroup {
@@ -75,14 +77,9 @@ function ClientCard({
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div
             style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: 'var(--r8)',
-              background: 'var(--s3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
+              width: '36px', height: '36px', borderRadius: 'var(--r8)',
+              background: 'var(--s3)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', flexShrink: 0,
             }}
           >
             <Building2 size={18} color="var(--t2)" />
@@ -119,12 +116,8 @@ function ClientCard({
             <div
               key={p.id}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '6px 10px',
-                background: 'var(--s1)',
-                borderRadius: 'var(--r8)',
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '6px 10px', background: 'var(--s1)', borderRadius: 'var(--r8)',
               }}
             >
               <FolderKanban size={12} color="var(--t3)" />
@@ -155,8 +148,193 @@ function ClientCard({
   )
 }
 
+// ── New Client Modal ──────────────────────────────────────────────────────────
+function NewClientModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter()
+  const supabase = createClient()
+  const [, startTransition] = useTransition()
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    name: '',
+    industria: '',
+    ciudad: '',
+    contacto: '',
+    notas: '',
+  })
+
+  const update = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [field]: e.target.value }))
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.name.trim()) return
+    setSaving(true)
+    startTransition(async () => {
+      const slug = toSlug(form.name.trim())
+      const { error } = await supabase
+        .from('clients')
+        .insert({
+          slug,
+          name: form.name.trim(),
+          description: form.industria.trim() || null,
+          contact_info: {
+            ...(form.industria.trim() ? { industria: form.industria.trim() } : {}),
+            ...(form.ciudad.trim()    ? { ciudad:    form.ciudad.trim()    } : {}),
+            ...(form.contacto.trim()  ? { contacto:  form.contacto.trim()  } : {}),
+          },
+          notes_md: form.notas.trim() || null,
+        })
+      if (error) {
+        toast.error(error.code === '23505' ? 'Ya existe un cliente con ese nombre' : 'Error al crear cliente')
+        setSaving(false)
+      } else {
+        toast.success('Cliente creado')
+        onClose()
+        router.push(`/dashboard/clientes/${slug}`)
+      }
+    })
+  }
+
+  return (
+    /* Backdrop */
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '20px',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--s1)', border: '1px solid var(--border)',
+          borderRadius: 'var(--r12)', padding: '24px',
+          width: '100%', maxWidth: '480px',
+          display: 'flex', flexDirection: 'column', gap: '16px',
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Building2 size={18} color="var(--acc)" />
+            <h3 style={{ fontWeight: 700, color: 'var(--t1)', fontSize: 'var(--text-md)' }}>Nuevo cliente</h3>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', display: 'flex', padding: '4px' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--t1)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--t3)')}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Nombre (required) */}
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>
+              Nombre <span style={{ color: 'var(--acc)' }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={update('name')}
+              placeholder="Maniaco Studio"
+              className="input"
+              autoFocus
+              required
+            />
+          </div>
+
+          {/* Industria */}
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>
+              Industria
+            </label>
+            <input
+              type="text"
+              value={form.industria}
+              onChange={update('industria')}
+              placeholder="SaaS, E-commerce, Salud..."
+              className="input"
+            />
+          </div>
+
+          {/* Ciudad/País */}
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>
+              Ciudad / País
+            </label>
+            <input
+              type="text"
+              value={form.ciudad}
+              onChange={update('ciudad')}
+              placeholder="Buenos Aires, Argentina"
+              className="input"
+            />
+          </div>
+
+          {/* Contacto principal */}
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>
+              Contacto principal
+            </label>
+            <input
+              type="text"
+              value={form.contacto}
+              onChange={update('contacto')}
+              placeholder="Juan Pérez — juan@empresa.com"
+              className="input"
+            />
+          </div>
+
+          {/* Notas iniciales */}
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>
+              Notas iniciales
+            </label>
+            <textarea
+              value={form.notas}
+              onChange={update('notas')}
+              placeholder="Contexto, objetivos, links de referencia..."
+              rows={3}
+              className="input"
+              style={{ resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
+            />
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-secondary"
+              style={{ fontSize: 'var(--text-sm)' }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !form.name.trim()}
+              className="btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', opacity: saving ? 0.7 : 1 }}
+            >
+              <Plus size={14} />
+              {saving ? 'Creando...' : 'Crear cliente'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Panel ────────────────────────────────────────────────────────────────
 export function ClientesPanel({ projects }: { projects: Project[] }) {
   const router = useRouter()
+  const [showModal, setShowModal] = useState(false)
 
   function handleDrilldown(clientName: string) {
     router.push(`/dashboard/clientes/${toSlug(clientName)}`)
@@ -178,57 +356,61 @@ export function ClientesPanel({ projects }: { projects: Project[] }) {
     }, {})
   ).sort((a, b) => b.lastActivity.localeCompare(a.lastActivity))
 
-  if (groups.length === 0) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '60px 20px',
-          gap: '12px',
-        }}
-      >
-        <Building2 size={32} color="var(--t3)" />
-        <p style={{ color: 'var(--t2)', fontSize: 'var(--text-md)' }}>
-          Sin clientes todavía.
-        </p>
-        <p style={{ color: 'var(--t3)', fontSize: 'var(--text-sm)' }}>
-          Creá el primer proyecto en <strong style={{ color: 'var(--t2)' }}>Proyectos</strong> para ver los clientes acá.
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div>
+      {showModal && <NewClientModal onClose={() => setShowModal(false)} />}
+
       {/* Header */}
-      <div style={{ marginBottom: '20px' }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--t1)', marginBottom: '2px' }}>
-          Clientes
-        </h2>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t2)' }}>
-          {groups.length} cliente{groups.length !== 1 ? 's' : ''} · {projects.length} proyecto{projects.length !== 1 ? 's' : ''} en total
-        </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px' }}>
+        <div>
+          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--t1)', marginBottom: '2px' }}>
+            Clientes
+          </h2>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t2)' }}>
+            {groups.length} cliente{groups.length !== 1 ? 's' : ''} · {projects.length} proyecto{projects.length !== 1 ? 's' : ''} en total
+          </p>
+        </div>
+        <button
+          onClick={() => setShowModal(true)}
+          className="btn-primary"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', flexShrink: 0 }}
+        >
+          <Plus size={14} />
+          Nuevo cliente
+        </button>
       </div>
 
-      {/* Grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-          gap: '16px',
-        }}
-      >
-        {groups.map((group) => (
-          <ClientCard
-            key={group.client_name}
-            group={group}
-            onDrilldown={handleDrilldown}
-          />
-        ))}
-      </div>
+      {groups.length === 0 ? (
+        <div
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', padding: '60px 20px', gap: '12px',
+          }}
+        >
+          <Building2 size={32} color="var(--t3)" />
+          <p style={{ color: 'var(--t2)', fontSize: 'var(--text-md)' }}>Sin clientes todavía.</p>
+          <p style={{ color: 'var(--t3)', fontSize: 'var(--text-sm)' }}>
+            Creá el primer cliente con el botón de arriba, o agregá un proyecto en{' '}
+            <strong style={{ color: 'var(--t2)' }}>Proyectos</strong>.
+          </p>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: '16px',
+          }}
+        >
+          {groups.map((group) => (
+            <ClientCard
+              key={group.client_name}
+              group={group}
+              onDrilldown={handleDrilldown}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

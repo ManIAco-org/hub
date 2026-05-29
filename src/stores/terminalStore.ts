@@ -9,10 +9,11 @@ export interface TerminalSession {
   label: string
   status: SessionStatus
   unread: number
-  resume?: boolean         // true = attach existing tmux (-A); false = new named session
-  cwd?: string             // working dir received from auth_ok
-  gitBranch?: string       // git branch received from auth_ok
-  lastActivityAt?: number  // ms timestamp of last terminal output (for status bar timer)
+  resume?: boolean          // true = attach existing tmux (-A); false = new named session
+  tmuxSessionName?: string  // exact tmux session name set after auth_ok; used to reattach
+  cwd?: string              // working dir received from auth_ok
+  gitBranch?: string        // git branch received from auth_ok
+  lastActivityAt?: number   // ms timestamp of last terminal output (for status bar timer)
 }
 
 interface TerminalStore {
@@ -29,7 +30,7 @@ interface TerminalStore {
   incrementUnread: (id: string) => void
   setOpen: (open: boolean) => void
   setMinimized: (minimized: boolean) => void
-  updateInfo: (id: string, info: { cwd?: string; gitBranch?: string }) => void
+  updateInfo: (id: string, info: { cwd?: string; gitBranch?: string; tmuxSessionName?: string }) => void
   touchActivity: (id: string) => void
 }
 

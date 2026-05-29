@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, ListTodo, FileCode2, Terminal, Rocket,
-  FileText, Cpu, Settings, ExternalLink, Github, Save, Plus, Trash2, Shield,
+  FileText, Cpu, Settings, ExternalLink, Github, Save, Plus, Trash2, Shield, Archive,
 } from 'lucide-react'
 import type { Project } from '@/lib/types'
 import { useTerminalStore } from '@/stores/terminalStore'
@@ -383,112 +383,194 @@ function TabTerminal({ project }: { project: Project }) {
 function TabSettings({ project }: { project: Project }) {
   const router = useRouter()
   const supabase = createClient()
-  const [form, setForm] = useState({
-    name: project.name,
-    description: project.description ?? '',
-    vercel_url: project.vercel_url ?? '',
-    github_url: project.github_url ?? '',
-    status: project.status,
-  })
+  const [name, setName] = useState(project.name)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [archiving, setArchiving] = useState(false)
+  const [deleteStep, setDeleteStep] = useState<0 | 1>(0)
+  const [deleting, setDeleting] = useState(false)
   const [, startTransition] = useTransition()
 
   function handleSave() {
+    if (!name.trim()) return
     setSaving(true)
     startTransition(async () => {
       const { error } = await supabase
         .from('projects')
-        .update({
-          name: form.name.trim(),
-          description: form.description.trim() || null,
-          vercel_url: form.vercel_url.trim() || null,
-          github_url: form.github_url.trim() || null,
-          status: form.status,
-        })
+        .update({ name: name.trim() })
         .eq('id', project.id)
       setSaving(false)
-      if (error) { toast.error('Error al guardar') } else { toast.success('Proyecto actualizado') }
-      setSaved(true)
-      setTimeout(() => { setSaved(false); router.refresh() }, 1500)
+      if (error) { toast.error('Error al guardar') } else {
+        toast.success('Nombre actualizado')
+        setSaved(true)
+        setTimeout(() => { setSaved(false); router.refresh() }, 1500)
+      }
     })
   }
 
-  const fields: { key: keyof typeof form; label: string; placeholder: string; type?: string }[] = [
-    { key: 'name',        label: 'Nombre',      placeholder: 'RC Repuestos' },
-    { key: 'description', label: 'Descripción', placeholder: 'Breve descripción' },
-    { key: 'vercel_url',  label: 'URL Vercel',  placeholder: 'https://...', type: 'url' },
-    { key: 'github_url',  label: 'URL GitHub',  placeholder: 'https://github.com/...', type: 'url' },
-  ]
+  function handleArchive() {
+    setArchiving(true)
+    startTransition(async () => {
+      const { error } = await supabase
+        .from('projects')
+        .update({ status: 'done' })
+        .eq('id', project.id)
+      setArchiving(false)
+      if (error) { toast.error('Error al archivar') } else {
+        toast.success('Proyecto archivado')
+        setTimeout(() => router.refresh(), 1000)
+      }
+    })
+  }
+
+  function handleDelete() {
+    if (deleteStep === 0) { setDeleteStep(1); return }
+    setDeleting(true)
+    startTransition(async () => {
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', project.id)
+      if (error) {
+        toast.error('Error al eliminar')
+        setDeleting(false)
+        setDeleteStep(0)
+      } else {
+        toast.success('Proyecto eliminado')
+        router.push('/dashboard/proyectos')
+      }
+    })
+  }
 
   return (
-    <div style={{ maxWidth: '560px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      {fields.map(({ key, label, placeholder, type }) => (
-        <div key={key}>
-          <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>
-            {label}
-          </label>
-          <input
-            type={type ?? 'text'}
-            value={form[key]}
-            onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-            placeholder={placeholder}
-            className="input"
-          />
-        </div>
-      ))}
+    <div style={{ maxWidth: '560px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
+      {/* ── Nombre ──────────────────────────────────────────────────────── */}
       <div>
         <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>
-          Estado
+          Nombre del proyecto
         </label>
-        <select
-          value={form.status}
-          onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as typeof form.status }))}
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="RC Repuestos"
           className="input"
-          style={{ height: '38px' }}
-        >
-          <option value="active">Activo</option>
-          <option value="paused">Pausado</option>
-          <option value="done">Listo</option>
-        </select>
+        />
+      </div>
+
+      {/* Cliente (read-only badge) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)' }}>Cliente:</span>
+        <span className="badge badge-acc">{project.client_name}</span>
       </div>
 
       <button
         onClick={handleSave}
-        disabled={saving}
+        disabled={saving || !name.trim()}
         className="btn-primary"
         style={{ display: 'flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-start', opacity: saving ? 0.7 : 1 }}
       >
         <Save size={14} />
-        {saved ? '¡Guardado!' : saving ? 'Guardando...' : 'Guardar cambios'}
+        {saved ? '¡Guardado!' : saving ? 'Guardando...' : 'Guardar nombre'}
       </button>
 
-      {/* ── Campos gestionados por el sistema ─────────────────────────────── */}
-      <div style={{
-        marginTop: '8px', padding: '14px 16px',
-        background: 'var(--s2)', border: '1px solid var(--border)',
-        borderRadius: 'var(--r8)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+      {/* ── Gestionado por el sistema ────────────────────────────────────── */}
+      <div style={{ padding: '14px 16px', background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
           <Shield size={13} color="var(--t3)" />
           <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Gestionado por el sistema
           </span>
         </div>
-        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)', marginBottom: '12px', lineHeight: 1.5 }}>
-          Estos valores se actualizan automáticamente. No son editables desde el Hub para prevenir inconsistencias en el servidor.
-        </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <ManagedField
-            label="Ruta Oracle"
-            value={project.server_path ?? '(se asignará al guardar)'}
-            hint="✓ Aislado en server"
-          />
-          <ManagedField
-            label="Slug"
-            value={project.server_path ? project.server_path.replace('/srv/maniacos/', '') : '—'}
-          />
+          <ManagedField label="Ruta Oracle" value={project.server_path ?? '(se asignará al guardar)'} hint="✓ Aislado en server" />
+          <ManagedField label="Slug" value={project.server_path ? project.server_path.replace('/srv/maniacos/', '') : '—'} />
+        </div>
+      </div>
+
+      {/* ── Zona de peligro ──────────────────────────────────────────────── */}
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Zona de peligro
+        </p>
+
+        {/* Archive */}
+        {project.status !== 'done' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '14px 16px', background: 'var(--s2)',
+            border: '1px solid var(--border)', borderRadius: 'var(--r8)',
+          }}>
+            <div>
+              <p style={{ fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-sm)', marginBottom: '2px' }}>Archivar proyecto</p>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)' }}>Marca como finalizado. Se puede reactivar desde la lista.</p>
+            </div>
+            <button
+              onClick={handleArchive}
+              disabled={archiving}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '7px 14px', background: 'none',
+                border: '1px solid var(--border)', borderRadius: 'var(--r6)',
+                cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 500,
+                color: 'var(--t2)', opacity: archiving ? 0.7 : 1,
+                transition: 'border-color 120ms, color 120ms',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--warn)'; e.currentTarget.style.color = 'var(--warn)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--t2)' }}
+            >
+              <Archive size={13} />
+              {archiving ? 'Archivando...' : 'Archivar'}
+            </button>
+          </div>
+        )}
+
+        {/* Delete */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 16px',
+          background: deleteStep === 1 ? 'rgba(239,68,68,0.06)' : 'var(--s2)',
+          border: `1px solid ${deleteStep === 1 ? '#EF4444' : 'var(--border)'}`,
+          borderRadius: 'var(--r8)',
+          transition: 'background 200ms, border-color 200ms',
+        }}>
+          <div>
+            <p style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: '2px', color: deleteStep === 1 ? '#EF4444' : 'var(--t1)' }}>
+              {deleteStep === 1 ? '¿Confirmar eliminación?' : 'Eliminar proyecto'}
+            </p>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)' }}>
+              {deleteStep === 1 ? 'Esta acción no se puede deshacer.' : 'Elimina el proyecto permanentemente del Hub.'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+            {deleteStep === 1 && (
+              <button
+                onClick={() => setDeleteStep(0)}
+                style={{ padding: '7px 12px', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--r6)', cursor: 'pointer', fontSize: 'var(--text-xs)', color: 'var(--t3)' }}
+              >
+                Cancelar
+              </button>
+            )}
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '7px 14px',
+                background: deleteStep === 1 ? '#EF4444' : 'none',
+                border: '1px solid #EF4444',
+                borderRadius: 'var(--r6)', cursor: 'pointer',
+                fontSize: 'var(--text-xs)', fontWeight: 500,
+                color: deleteStep === 1 ? '#fff' : '#EF4444',
+                opacity: deleting ? 0.7 : 1,
+                transition: 'background 150ms',
+              }}
+            >
+              <Trash2 size={13} />
+              {deleting ? 'Eliminando...' : deleteStep === 1 ? '¡Eliminar!' : 'Eliminar'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

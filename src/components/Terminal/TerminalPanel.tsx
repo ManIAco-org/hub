@@ -3,11 +3,10 @@
 import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
-import { Minus, Maximize2, ChevronDown, X, RotateCw } from 'lucide-react'
+import { Minus, Maximize2, ChevronDown, X } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useTerminalStore } from '@/stores/terminalStore'
 import type { TerminalSession } from '@/stores/terminalStore'
-import { TerminalTab } from './TerminalTab'
 import { XtermInstance } from './XtermInstance'
 import { useTerminalSocket } from './useTerminalSocket'
 
@@ -74,26 +73,32 @@ function StatusBar({ session }: { session: TerminalSession }) {
   )
 }
 
-// ── Per-session pane (one per session, all mounted, inactive are transparent) ──
+// ── Per-session pane — only ONE is mounted at a time (the active session) ──────
+// Unmounting closes the WS; remounting with tmuxSessionName reattaches via targetSession.
 function SessionPane({
-  sessionId, clientSlug, isActive, resume,
+  sessionId, clientSlug, isActive, resume, tmuxSessionName,
 }: {
   sessionId: string
   clientSlug: string
   isActive: boolean
   resume?: boolean
+  tmuxSessionName?: string
 }) {
   const termRef    = useRef<Terminal | null>(null)
   const fitRef     = useRef<FitAddon | null>(null)
   const [termReady, setTermReady] = useState(false)
+
+  // If we have a known tmux session name → attach to it (targetSession takes priority
+  // on the server side). Otherwise: resume=true → attach-or-create, else → fresh session.
   const { sendData, resize } = useTerminalSocket({
     sessionId,
     clientSlug,
     terminalRef: termRef,
-    newSession: !resume,
+    newSession: !resume && !tmuxSessionName,
+    targetSession: tmuxSessionName,
   })
 
-  // Re-fit when becoming active (after xterm is ready)
+  // Re-fit when active (after xterm is ready)
   useEffect(() => {
     if (isActive && termReady) {
       const fit = fitRef.current
@@ -123,7 +128,7 @@ function SessionPane({
             opacity: 0.8,
             letterSpacing: '0.03em',
           }}>
-            Iniciando terminal...
+            {tmuxSessionName ? 'Reconectando sesión...' : 'Iniciando terminal...'}
           </span>
         </div>
       )}
@@ -179,11 +184,8 @@ export function TerminalPanel() {
   const sessions        = useTerminalStore((s) => s.sessions)
   const activeId        = useTerminalStore((s) => s.activeSessionId)
   const switchToSession = useTerminalStore((s) => s.switchToSession)
-  const closeSession    = useTerminalStore((s) => s.closeSession)
-  const markRead        = useTerminalStore((s) => s.markRead)
   const setMinimized    = useTerminalStore((s) => s.setMinimized)
   const setOpen         = useTerminalStore((s) => s.setOpen)
-  const openSession     = useTerminalStore((s) => s.openSession)
 
   const pathname = usePathname()
 
@@ -244,25 +246,6 @@ export function TerminalPanel() {
     }
   }, [])
 
-  // ── Tab switch ────────────────────────────────────────────────────────────
-  const handleSwitch = useCallback((id: string) => {
-    switchToSession(id)
-    markRead(id)
-  }, [switchToSession, markRead])
-
-  // ── Resume: new tab that attaches existing tmux session (-A) ─────────────
-  const handleResume = useCallback(() => {
-    const active = sessions.find((s) => s.id === activeId)
-    if (!active) return
-    openSession({
-      id: `${active.id}-r${Date.now()}`,
-      clientSlug: active.clientSlug,
-      projectId: active.projectId,
-      label: `↺ ${active.label}`,
-      resume: true,
-    })
-  }, [sessions, activeId, openSession])
-
   const activeSession = sessions.find((s) => s.id === activeId)
 
   if (sessions.length === 0) return null
@@ -307,7 +290,7 @@ export function TerminalPanel() {
       <div
         style={{
           display: 'flex',
-          alignItems: 'stretch',
+          alignItems: 'center',
           height: '36px',
           background: '#111111',
           borderBottom: '1px solid #1C1C1C',
@@ -315,24 +298,31 @@ export function TerminalPanel() {
           userSelect: 'none',
         }}
       >
-        {/* Tabs — only sessions in scope for this route */}
-        <div style={{ display: 'flex', flex: 1, overflowX: 'auto', minWidth: 0 }}>
-          {visibleSessions.map((s) => (
-            <TerminalTab
-              key={s.id}
-              session={s}
-              isActive={s.id === activeId}
-              onClick={() => handleSwitch(s.id)}
-              onClose={() => closeSession(s.id)}
-            />
-          ))}
+        {/* Session label */}
+        <div style={{
+          flex: 1, display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '0 12px', minWidth: 0, overflow: 'hidden',
+        }}>
+          <span style={{ fontSize: '13px' }}>💻</span>
+          <span style={{
+            fontFamily: '"Geist Mono", monospace',
+            fontSize: '12px',
+            color: '#EFEFEF',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {activeSession?.label ?? 'Terminal'}
+          </span>
+          {visibleSessions.length > 1 && (
+            <span style={{ fontSize: '10px', color: '#525866', flexShrink: 0 }}>
+              {visibleSessions.length} sesiones
+            </span>
+          )}
         </div>
 
         {/* Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '0 6px', flexShrink: 0 }}>
-          <CtrlBtn title="Resumir sesión tmux" onClick={handleResume}>
-            <RotateCw size={13} />
-          </CtrlBtn>
           <CtrlBtn title="Minimizar" onClick={() => setMinimized(true)}>
             <Minus size={13} />
           </CtrlBtn>
@@ -348,17 +338,21 @@ export function TerminalPanel() {
         </div>
       </div>
 
-      {/* ── Terminal panes ────────────────────────────────────────────────── */}
+      {/* ── Single active terminal pane ───────────────────────────────────── */}
+      {/* key=activeSession.id ensures React destroys + recreates the pane on session
+          switch, closing the old WS (via useEffect cleanup) and opening a new one
+          that reattaches to the right tmux session via targetSession */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
-        {sessions.map((s) => (
+        {activeSession && (
           <SessionPane
-            key={s.id}
-            sessionId={s.id}
-            clientSlug={s.clientSlug}
-            isActive={s.id === activeId}
-            resume={s.resume}
+            key={activeSession.id}
+            sessionId={activeSession.id}
+            clientSlug={activeSession.clientSlug}
+            isActive={true}
+            resume={activeSession.resume}
+            tmuxSessionName={activeSession.tmuxSessionName}
           />
-        ))}
+        )}
       </div>
 
       {/* ── Status bar ───────────────────────────────────────────────────── */}

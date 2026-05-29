@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -11,7 +11,6 @@ interface Props {
   onChange: (html: string) => void
 }
 
-// Minimal icon toolbar button
 function ToolbarBtn({
   onClick,
   active,
@@ -27,7 +26,7 @@ function ToolbarBtn({
     <button
       type="button"
       onMouseDown={(e) => {
-        e.preventDefault() // prevent editor blur
+        e.preventDefault()
         onClick()
       }}
       title={title}
@@ -41,16 +40,10 @@ function ToolbarBtn({
         transition: 'background 100ms, color 100ms',
       }}
       onMouseEnter={(e) => {
-        if (!active) {
-          e.currentTarget.style.background = 'var(--s3)'
-          e.currentTarget.style.color = 'var(--t1)'
-        }
+        if (!active) { e.currentTarget.style.background = 'var(--s3)'; e.currentTarget.style.color = 'var(--t1)' }
       }}
       onMouseLeave={(e) => {
-        if (!active) {
-          e.currentTarget.style.background = 'none'
-          e.currentTarget.style.color = 'var(--t2)'
-        }
+        if (!active) { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--t2)' }
       }}
     >
       {children}
@@ -62,7 +55,7 @@ export function NotesEditor({ content, onChange }: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const editor = useEditor({
-    immediatelyRender: false,   // required for Next.js 15 — prevents hydration mismatch
+    immediatelyRender: false,  // required for Next.js 15 — prevents hydration mismatch
     extensions: [
       StarterKit,
       Placeholder.configure({ placeholder: 'Escribí algo...' }),
@@ -81,7 +74,7 @@ export function NotesEditor({ content, onChange }: Props) {
     },
   })
 
-  // Update content when the active note changes
+  // Sync content when the active note changes (key prop handles hard reset)
   const prevContent = useRef(content)
   useEffect(() => {
     if (!editor) return
@@ -91,91 +84,48 @@ export function NotesEditor({ content, onChange }: Props) {
     }
   }, [content, editor])
 
-  if (!editor) return null
+  // ── ALL hooks above this line — no conditional hook calls below ───────────
+  // editor can be null on first render (useEditor is async); render loading state
+  if (!editor) {
+    return (
+      <div style={{
+        width: '100%', maxWidth: '800px', borderRadius: '12px',
+        background: 'var(--s1)', border: '1px solid var(--border)',
+        minHeight: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <span style={{ color: 'var(--t3)', fontSize: 'var(--text-sm)' }}>Iniciando editor...</span>
+      </div>
+    )
+  }
 
-  const chain = useCallback(() => editor.chain().focus(), [editor])
+  // Shorthand for chained commands — safe here (after all hooks, not a hook itself)
+  const ch = () => editor.chain().focus()
 
   return (
-    <div
-      style={{
-        width: '100%',
-        maxWidth: '800px',
-        borderRadius: '12px',
-        background: 'var(--s1)',
-        border: '1px solid var(--border)',
-        overflow: 'hidden',
-        boxSizing: 'border-box',
-      }}
-    >
+    <div style={{
+      width: '100%', maxWidth: '800px',
+      borderRadius: '12px', background: 'var(--s1)',
+      border: '1px solid var(--border)', overflow: 'hidden',
+      boxSizing: 'border-box',
+    }}>
       {/* Toolbar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '2px',
-          padding: '6px 10px',
-          borderBottom: '1px solid var(--border)',
-          background: 'var(--s2)',
-        }}
-      >
-        <ToolbarBtn
-          onClick={() => chain().toggleBold().run()}
-          active={editor.isActive('bold')}
-          title="Negrita"
-        >
-          <Bold size={13} />
-        </ToolbarBtn>
-        <ToolbarBtn
-          onClick={() => chain().toggleItalic().run()}
-          active={editor.isActive('italic')}
-          title="Cursiva"
-        >
-          <Italic size={13} />
-        </ToolbarBtn>
-        <ToolbarBtn
-          onClick={() => chain().toggleStrike().run()}
-          active={editor.isActive('strike')}
-          title="Tachado"
-        >
-          <Strikethrough size={13} />
-        </ToolbarBtn>
-
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '2px',
+        padding: '6px 10px', borderBottom: '1px solid var(--border)',
+        background: 'var(--s2)',
+      }}>
+        <ToolbarBtn onClick={() => ch().toggleBold().run()}              active={editor.isActive('bold')}              title="Negrita"><Bold size={13} /></ToolbarBtn>
+        <ToolbarBtn onClick={() => ch().toggleItalic().run()}            active={editor.isActive('italic')}            title="Cursiva"><Italic size={13} /></ToolbarBtn>
+        <ToolbarBtn onClick={() => ch().toggleStrike().run()}            active={editor.isActive('strike')}            title="Tachado"><Strikethrough size={13} /></ToolbarBtn>
         <div style={{ width: '1px', height: '16px', background: 'var(--border)', margin: '0 4px' }} />
-
-        <ToolbarBtn
-          onClick={() => chain().toggleHeading({ level: 1 }).run()}
-          active={editor.isActive('heading', { level: 1 })}
-          title="Título 1"
-        >
-          <Heading1 size={13} />
-        </ToolbarBtn>
-        <ToolbarBtn
-          onClick={() => chain().toggleHeading({ level: 2 }).run()}
-          active={editor.isActive('heading', { level: 2 })}
-          title="Título 2"
-        >
-          <Heading2 size={13} />
-        </ToolbarBtn>
-
+        <ToolbarBtn onClick={() => ch().toggleHeading({ level: 1 }).run()} active={editor.isActive('heading', { level: 1 })} title="Título 1"><Heading1 size={13} /></ToolbarBtn>
+        <ToolbarBtn onClick={() => ch().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} title="Título 2"><Heading2 size={13} /></ToolbarBtn>
         <div style={{ width: '1px', height: '16px', background: 'var(--border)', margin: '0 4px' }} />
-
-        <ToolbarBtn
-          onClick={() => chain().toggleBulletList().run()}
-          active={editor.isActive('bulletList')}
-          title="Lista"
-        >
-          <List size={13} />
-        </ToolbarBtn>
-        <ToolbarBtn
-          onClick={() => chain().toggleOrderedList().run()}
-          active={editor.isActive('orderedList')}
-          title="Lista numerada"
-        >
-          <ListOrdered size={13} />
-        </ToolbarBtn>
+        <ToolbarBtn onClick={() => ch().toggleBulletList().run()}        active={editor.isActive('bulletList')}        title="Lista"><List size={13} /></ToolbarBtn>
+        <ToolbarBtn onClick={() => ch().toggleOrderedList().run()}       active={editor.isActive('orderedList')}       title="Lista numerada"><ListOrdered size={13} /></ToolbarBtn>
       </div>
 
-      {/* Editor */}
+      {/* Editor content */}
       <style>{`
         .tiptap-editor p { margin: 0 0 8px 0; }
         .tiptap-editor h1 { font-size: 1.4em; font-weight: 700; margin: 0 0 10px 0; color: var(--t1); }
@@ -188,11 +138,8 @@ export function NotesEditor({ content, onChange }: Props) {
         .tiptap-editor code { font-family: var(--mono); font-size: 12px; background: var(--s3); padding: 1px 5px; border-radius: 4px; }
         .tiptap-editor blockquote { border-left: 3px solid var(--border); padding-left: 12px; color: var(--t3); margin: 0 0 8px 0; }
         .tiptap-editor .is-editor-empty:first-child::before {
-          content: attr(data-placeholder);
-          float: left;
-          color: var(--t3);
-          pointer-events: none;
-          height: 0;
+          content: attr(data-placeholder); float: left;
+          color: var(--t3); pointer-events: none; height: 0;
         }
       `}</style>
       <div className="tiptap-editor" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
