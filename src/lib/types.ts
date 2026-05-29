@@ -126,6 +126,7 @@ export interface Lead {
   phone: string | null
   email: string | null
   source: string
+  place_id: string | null
   raw_data: Record<string, unknown> | null
   status: LeadStatus
   created_at: string

@@ -1,49 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import Anthropic from '@anthropic-ai/sdk'
 
 const SERPAPI_URL = 'https://serpapi.com/search'
 
-interface SerpApiResult {
-  organic_results?: Array<{
-    title?: string
-    link?: string
-    displayed_link?: string
-    snippet?: string
-    place_results?: {
-      title?: string
-      phone?: string
-      address?: string
-    }
-  }>
-  local_results?: {
-    places?: Array<{
-      title?: string
-      phone?: string
-      website?: string
-      address?: string
-    }>
-  }
-  error?: string
+// ── City coordinates for Google Maps search ───────────────────────────────────
+const CITY_COORDS: Record<string, string> = {
+  'córdoba':                  '-31.4201,-64.1888',
+  'cordoba':                  '-31.4201,-64.1888',
+  'córdoba argentina':        '-31.4201,-64.1888',
+  'cordoba argentina':        '-31.4201,-64.1888',
+  'buenos aires':             '-34.6037,-58.3816',
+  'caba':                     '-34.6037,-58.3816',
+  'ciudad de buenos aires':   '-34.6037,-58.3816',
+  'rosario':                  '-32.9442,-60.6505',
+  'rosario argentina':        '-32.9442,-60.6505',
+  'mendoza':                  '-32.8908,-68.8272',
+  'mendoza argentina':        '-32.8908,-68.8272',
+  'la plata':                 '-34.9215,-57.9545',
+  'mar del plata':            '-38.0055,-57.5426',
+  'tucumán':                  '-26.8083,-65.2176',
+  'tucuman':                  '-26.8083,-65.2176',
+  'salta':                    '-24.7821,-65.4232',
+  'santa fe':                 '-31.6333,-60.7000',
+  'san juan':                 '-31.5375,-68.5364',
+  'resistencia':              '-27.4513,-58.9862',
+  'neuquén':                  '-38.9516,-68.0591',
+  'neuquen':                  '-38.9516,-68.0591',
+  'posadas':                  '-27.3661,-55.8961',
+  'bahía blanca':             '-38.7196,-62.2724',
+  'bahia blanca':             '-38.7196,-62.2724',
 }
 
-interface ParsedLead {
-  company: string
-  website: string | null
-  phone: string | null
-  city: string | null
-  industry: string | null
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface IcpParsed {
+  query:    string
+  location: string
 }
 
-/** Extract city from various address formats */
+interface MapsPlace {
+  title?:            string
+  address?:          string
+  phone?:            string
+  website?:          string
+  rating?:           number
+  reviews?:          number
+  type?:             string
+  place_id?:         string
+  gps_coordinates?:  { latitude: number; longitude: number }
+}
+
+interface MapsResponse {
+  local_results?: MapsPlace[]
+  error?:         string
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Extract city name from a full address string */
 function extractCity(address: string | undefined): string | null {
   if (!address) return null
-  // Try to get the first meaningful part before a comma
-  const parts = address.split(',').map((s) => s.trim())
-  // Return second-to-last part (usually city before country)
-  return parts[parts.length - 2] ?? parts[0] ?? null
+  const parts = address.split(',').map((s) => s.trim()).filter(Boolean)
+  // "Calle 123, Barrio, Ciudad, Provincia, País" → take second-to-last (Ciudad)
+  return parts.length >= 2 ? (parts[parts.length - 2] ?? null) : (parts[0] ?? null)
 }
 
-/** Sanitize and normalize a website URL */
+/** Normalize a website URL to its origin+path (strips query string, trailing slash) */
 function normalizeWebsite(url: string | undefined): string | null {
   if (!url) return null
   try {
@@ -54,59 +76,52 @@ function normalizeWebsite(url: string | undefined): string | null {
   }
 }
 
-/** Parse SerpAPI response into our Lead shape */
-function parseResults(data: SerpApiResult, count: number): ParsedLead[] {
-  const leads: ParsedLead[] = []
-
-  // Local (Google Maps) results first — richer data
-  if (data.local_results?.places) {
-    for (const place of data.local_results.places.slice(0, count)) {
-      if (!place.title) continue
-      leads.push({
-        company:  place.title,
-        website:  normalizeWebsite(place.website),
-        phone:    place.phone ?? null,
-        city:     extractCity(place.address),
-        industry: null,
-      })
-    }
+/**
+ * Use Claude Haiku to extract { query, location } from a free-text ICP prompt.
+ * Falls back gracefully if the API key is missing or the call fails.
+ */
+async function parseIcp(icpPrompt: string): Promise<IcpParsed> {
+  const apiKey = process.env.ANTHROPIC_API_KEY_AGENTS
+  if (!apiKey) {
+    console.warn('[lead-scraper] ANTHROPIC_API_KEY_AGENTS not set — using raw prompt as query')
+    return { query: icpPrompt, location: '' }
   }
 
-  // Organic results to supplement
-  if (data.organic_results && leads.length < count) {
-    for (const result of data.organic_results.slice(0, count - leads.length)) {
-      if (!result.title) continue
-      // Skip results that are clearly not business listings
-      const url = result.link ?? ''
-      if (
-        url.includes('google.com') ||
-        url.includes('facebook.com') ||
-        url.includes('linkedin.com') ||
-        url.includes('youtube.com') ||
-        url.includes('wikipedia.org')
-      ) continue
+  try {
+    const client = new Anthropic({ apiKey })
+    const msg = await client.messages.create({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 80,
+      messages: [{
+        role:    'user',
+        content: `Extrae de este texto de búsqueda B2B: "${icpPrompt}"
+Devolvé SOLO JSON (sin markdown ni explicación): {"query":"qué tipo de negocio","location":"ciudad y país"}
+Ejemplos:
+"inmobiliarias en Córdoba Argentina" → {"query":"inmobiliarias","location":"córdoba argentina"}
+"agencias de marketing CABA" → {"query":"agencias de marketing","location":"buenos aires"}
+"estudios jurídicos Rosario" → {"query":"estudios jurídicos","location":"rosario argentina"}`,
+      }],
+    })
 
-      leads.push({
-        company:  result.place_results?.title ?? result.title,
-        website:  normalizeWebsite(url),
-        phone:    result.place_results?.phone ?? null,
-        city:     null,
-        industry: null,
-      })
+    const text = msg.content[0]?.type === 'text' ? msg.content[0].text.trim() : ''
+    const parsed = JSON.parse(text) as { query?: string; location?: string }
+    return {
+      query:    parsed.query?.trim()    || icpPrompt,
+      location: parsed.location?.trim() || '',
     }
+  } catch (err) {
+    console.warn('[lead-scraper] ICP parse failed, using raw prompt:', err instanceof Error ? err.message : err)
+    return { query: icpPrompt, location: '' }
   }
-
-  return leads.slice(0, count)
 }
 
+// ── Route Handler ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     // Auth check
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+    if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
     // Validate body
     const body = await req.json() as { campaignId?: string; count?: number }
@@ -134,58 +149,110 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'SERPAPI_KEY no configurada en el servidor' }, { status: 500 })
     }
 
-    // Call SerpAPI — request more results than needed to account for filtering
-    const params = new URLSearchParams({
-      q:       campaign.icp_prompt,
-      api_key: serpApiKey,
-      num:     String(Math.min(count * 2, 100)),   // fetch double, filter down
-      hl:      'es',
-      gl:      'ar',                               // Argentina results by default
-      engine:  'google',
-    })
+    // ── Parse ICP prompt with Claude Haiku ─────────────────────────────────
+    const { query, location } = await parseIcp(campaign.icp_prompt)
+    const coords = location ? (CITY_COORDS[location.toLowerCase()] ?? null) : null
 
-    console.log(`[lead-scraper] Fetching SerpAPI for campaign ${campaignId}: "${campaign.icp_prompt}"`)
+    console.log(`[lead-scraper] campaign=${campaignId} query="${query}" location="${location}" coords=${coords ?? 'none'}`)
+
+    // ── Call SerpAPI Google Maps ────────────────────────────────────────────
+    const params = new URLSearchParams({
+      engine:  'google_maps',
+      q:       coords ? query : `${query} ${location}`.trim(), // embed location in query when no coords
+      type:    'search',
+      api_key: serpApiKey,
+      hl:      'es',
+    })
+    if (coords) params.set('ll', `@${coords},14z`)
+
+    console.log(`[lead-scraper] SerpAPI Maps request: q="${params.get('q')}" ll=${params.get('ll') ?? 'none'}`)
+
     const serpRes = await fetch(`${SERPAPI_URL}?${params.toString()}`, {
       headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(25_000),
+      signal:  AbortSignal.timeout(25_000),
     })
 
     if (!serpRes.ok) {
       const text = await serpRes.text().catch(() => '')
-      console.error(`[lead-scraper] SerpAPI HTTP ${serpRes.status}: ${text}`)
+      console.error(`[lead-scraper] SerpAPI HTTP ${serpRes.status}: ${text.slice(0, 200)}`)
       return NextResponse.json({ error: `Error de SerpAPI: ${serpRes.status}` }, { status: 502 })
     }
 
-    const serpData = await serpRes.json() as SerpApiResult
+    const mapsData = await serpRes.json() as MapsResponse
 
-    if (serpData.error) {
-      console.error(`[lead-scraper] SerpAPI error: ${serpData.error}`)
-      return NextResponse.json({ error: `SerpAPI: ${serpData.error}` }, { status: 502 })
+    if (mapsData.error) {
+      console.error(`[lead-scraper] SerpAPI error: ${mapsData.error}`)
+      return NextResponse.json({ error: `SerpAPI: ${mapsData.error}` }, { status: 502 })
     }
 
-    const parsed = parseResults(serpData, count)
+    const places = mapsData.local_results ?? []
+    console.log(`[lead-scraper] Maps returned ${places.length} places`)
 
-    if (parsed.length === 0) {
-      return NextResponse.json({ inserted: 0, skipped_duplicates: 0, message: 'Sin resultados para ese ICP' })
+    if (places.length === 0) {
+      return NextResponse.json({
+        inserted: 0, skipped_duplicates: 0,
+        query, location,
+        message: 'Google Maps no devolvió resultados para ese ICP',
+      })
     }
 
-    // Build rows — store individual result snippet in raw_data (not the full 500KB response)
-    const rows = parsed.map((lead) => ({
-      campaign_id: campaignId,
-      company:     lead.company,
-      website:     lead.website,
-      phone:       lead.phone,
-      city:        lead.city,
-      industry:    lead.industry,
-      source:      'serpapi',
-      status:      'raw',
-      raw_data:    { company: lead.company, website: lead.website, phone: lead.phone, city: lead.city },
-    }))
+    // ── Filter and build lead rows ──────────────────────────────────────────
+    const validPlaces = places.slice(0, count).filter((p) => {
+      if (!p.title) return false
+      // Skip leads with no contactable info
+      if (!p.website && !p.phone) return false
+      return true
+    })
 
-    // Upsert with ignoreDuplicates=true → ON CONFLICT (campaign_id, website) DO NOTHING
-    const { data: upserted, error: insertError } = await supabase
+    // Fetch existing place_ids and websites for this campaign (for JS-level dedup)
+    const { data: existing } = await supabase
       .from('leads')
-      .upsert(rows, { onConflict: 'campaign_id,website', ignoreDuplicates: true })
+      .select('place_id, website')
+      .eq('campaign_id', campaignId)
+
+    const existingPlaceIds = new Set(existing?.map((r) => r.place_id).filter(Boolean))
+    const existingWebsites  = new Set(existing?.map((r) => r.website).filter(Boolean))
+
+    const newRows = validPlaces
+      .filter((p) => {
+        // Skip if place_id already in campaign
+        if (p.place_id && existingPlaceIds.has(p.place_id)) return false
+        // Skip if website already in campaign
+        const web = normalizeWebsite(p.website)
+        if (web && existingWebsites.has(web)) return false
+        return true
+      })
+      .map((p) => ({
+        campaign_id: campaignId,
+        company:     p.title!,
+        industry:    p.type ?? null,
+        city:        extractCity(p.address),
+        website:     normalizeWebsite(p.website),
+        phone:       p.phone ?? null,
+        email:       null,
+        source:      'google_maps',
+        status:      'raw',
+        place_id:    p.place_id ?? null,
+        raw_data: {
+          address:  p.address,
+          rating:   p.rating,
+          reviews:  p.reviews,
+          type:     p.type,
+          gps:      p.gps_coordinates,
+          place_id: p.place_id,
+        },
+      }))
+
+    const skipped = places.slice(0, count).length - newRows.length
+
+    if (newRows.length === 0) {
+      return NextResponse.json({ inserted: 0, skipped_duplicates: skipped, query, location })
+    }
+
+    // ── Insert ──────────────────────────────────────────────────────────────
+    const { data: inserted, error: insertError } = await supabase
+      .from('leads')
+      .insert(newRows)
       .select('id')
 
     if (insertError) {
@@ -193,14 +260,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
-    const insertedCount = upserted?.length ?? 0
-    const skipped = rows.length - insertedCount
-
-    console.log(`[lead-scraper] Done: ${insertedCount} inserted, ${skipped} skipped duplicates`)
+    const insertedCount = inserted?.length ?? 0
+    console.log(`[lead-scraper] Done: ${insertedCount} inserted, ${skipped} skipped`)
 
     return NextResponse.json({
       inserted:           insertedCount,
       skipped_duplicates: skipped,
+      query,
+      location,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error inesperado'

@@ -39,7 +39,7 @@ function ScrapeModal({ campaign, onClose, onDone }: {
 }) {
   const [count, setCount] = useState(20)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{ inserted: number; skipped: number } | null>(null)
+  const [result, setResult] = useState<{ inserted: number; skipped: number; query?: string; location?: string } | null>(null)
 
   async function handleScrape() {
     setLoading(true)
@@ -50,15 +50,15 @@ function ScrapeModal({ campaign, onClose, onDone }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ campaignId: campaign.id, count }),
       })
-      const json = await res.json() as { inserted?: number; skipped_duplicates?: number; error?: string }
+      const json = await res.json() as { inserted?: number; skipped_duplicates?: number; error?: string; query?: string; location?: string }
       if (!res.ok || json.error) {
         toast.error(json.error ?? 'Error al scrapear')
       } else {
-        setResult({ inserted: json.inserted ?? 0, skipped: json.skipped_duplicates ?? 0 })
-        toast.success(`${json.inserted} leads agregados`)
+        setResult({ inserted: json.inserted ?? 0, skipped: json.skipped_duplicates ?? 0, query: json.query, location: json.location })
+        if ((json.inserted ?? 0) > 0) toast.success(`${json.inserted} leads agregados desde Google Maps`)
         onDone()
       }
-    } catch (err) {
+    } catch {
       toast.error('Error de red al scrapear')
     } finally {
       setLoading(false)
@@ -125,7 +125,18 @@ function ScrapeModal({ campaign, onClose, onDone }: {
           </p>
         </div>
 
-        {/* Result */}
+        {/* Parsed query preview (after scrape) */}
+        {result && (result.query || result.location) && (
+          <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '10px 12px' }}>
+            <p style={{ fontSize: '11px', color: 'var(--t3)', marginBottom: '2px' }}>Búsqueda Google Maps</p>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t2)' }}>
+              <strong style={{ color: 'var(--acc)' }}>&ldquo;{result.query}&rdquo;</strong>
+              {result.location && <> cerca de <strong>{result.location}</strong></>}
+            </p>
+          </div>
+        )}
+
+        {/* Result counts */}
         {result && (
           <div style={{
             background: 'var(--acc-d)', border: '1px solid var(--acc-b)',
@@ -138,7 +149,7 @@ function ScrapeModal({ campaign, onClose, onDone }: {
             </div>
             <div style={{ textAlign: 'center' }}>
               <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--t3)', lineHeight: 1 }}>{result.skipped}</p>
-              <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '2px' }}>duplicados</p>
+              <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '2px' }}>duplicados / sin contacto</p>
             </div>
           </div>
         )}
