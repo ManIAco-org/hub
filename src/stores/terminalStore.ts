@@ -11,6 +11,7 @@ export interface TerminalSession {
   unread: number
   resume?: boolean          // true = attach existing tmux (-A); false = new named session
   tmuxSessionName?: string  // exact tmux session name set after auth_ok; used to reattach
+  customName?: string       // user-set display name; overrides label in UI
   cwd?: string              // working dir received from auth_ok
   gitBranch?: string        // git branch received from auth_ok
   lastActivityAt?: number   // ms timestamp of last terminal output (for status bar timer)
@@ -32,6 +33,7 @@ interface TerminalStore {
   setMinimized: (minimized: boolean) => void
   updateInfo: (id: string, info: { cwd?: string; gitBranch?: string; tmuxSessionName?: string }) => void
   touchActivity: (id: string) => void
+  renameSession: (id: string, name: string) => void
 }
 
 export const useTerminalStore = create<TerminalStore>((set) => ({
@@ -94,6 +96,12 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
   touchActivity: (id) => set((state) => ({
     sessions: state.sessions.map((s) =>
       s.id === id ? { ...s, lastActivityAt: Date.now() } : s,
+    ),
+  })),
+
+  renameSession: (id, name) => set((state) => ({
+    sessions: state.sessions.map((s) =>
+      s.id === id ? { ...s, customName: name.trim() || undefined } : s,
     ),
   })),
 }))

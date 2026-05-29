@@ -261,29 +261,42 @@ wss.on('connection', (ws, req) => {
     }
     cwd = resolved
 
-    // ── Auto-create project directory if under /srv/maniacos/clientes/ ────
+    // ── Auto-create cwd anywhere under /srv/maniacos/ ─────────────────────
     // Server runs as root via systemd — safe to mkdir + chown.
     if (!fs.existsSync(cwd)) {
-      if (cwd.startsWith(ROOT_PATH + '/clientes/') || cwd.startsWith(ROOT_PATH + '/personal/')) {
-        console.log(`[terminal] mkdir -p ${cwd}`)
-        try {
-          fs.mkdirSync(cwd, { recursive: true, mode: 0o2775 })
-          // Attempt chown to linux user + maniacos group (gid 2000 by default)
-          const maniacosGid = parseInt(process.env.GID_MANIACOS ?? '2000', 10)
-          try { fs.chownSync(cwd, userInfo.uid, maniacosGid) } catch { /* best-effort */ }
-        } catch (mkdirErr) {
-          console.error(`[terminal] mkdir failed: ${mkdirErr.message}`)
+      console.log(`[terminal] auto-creating cwd: ${cwd}`)
+      try {
+        fs.mkdirSync(cwd, { recursive: true, mode: 0o2775 })
+
+        // Resolve linux user UID from the OS (fallback to USER_MAP value)
+        let uid = userInfo.uid
+        try { uid = parseInt(execSync(`id -u ${userInfo.linuxUser}`, { timeout: 2000 }).toString().trim(), 10) } catch { /* use map fallback */ }
+
+        // Resolve maniacos group GID from the OS (fallback to env var or 2000)
+        let maniacosGid = parseInt(process.env.GID_MANIACOS ?? '2000', 10)
+        try { maniacosGid = parseInt(execSync('getent group maniacos | cut -d: -f3', { timeout: 2000 }).toString().trim(), 10) } catch { /* use env fallback */ }
+
+        // chown every intermediate directory from ROOT_PATH down to cwd
+        const rel   = cwd.slice(ROOT_PATH.length + 1) // strip "/srv/maniacos/" prefix
+        const parts = rel.split('/').filter(Boolean)
+        let acc = ROOT_PATH
+        for (const part of parts) {
+          acc += '/' + part
+          try { fs.chownSync(acc, uid, maniacosGid) } catch { /* skip if can't chown */ }
         }
+        console.log(`[terminal] auto-created ${cwd} owner=${userInfo.linuxUser}:maniacos (uid=${uid} gid=${maniacosGid})`)
+      } catch (mkdirErr) {
+        console.error(`[terminal] mkdir failed: ${mkdirErr.message}`)
+        sendJson({ type: 'auth_error', message: `No se pudo crear la carpeta del proyecto: ${mkdirErr.message}` })
+        ws.close(1011, 'mkdir failed')
+        return
       }
     }
 
+    // Final existence check (should always pass after mkdir)
     if (!fs.existsSync(cwd)) {
-      const hint = `sudo mkdir -p ${cwd} && sudo chown ${userInfo.linuxUser}:maniacos ${cwd}`
-      console.error(`[terminal] cwd not found: ${cwd}`)
-      sendJson({
-        type: 'auth_error',
-        message: `Carpeta del proyecto no existe en el servidor: ${cwd}\nCrear con: ${hint}`,
-      })
+      console.error(`[terminal] cwd still missing after mkdir: ${cwd}`)
+      sendJson({ type: 'auth_error', message: `Carpeta no accesible: ${cwd}` })
       ws.close(1008, 'cwd not found')
       return
     }
@@ -434,7 +447,7 @@ async function auditLog(email, linuxUser, sessionName, event) {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[terminal] v1.5.0 listening on 127.0.0.1:${PORT}`)
+  console.log(`[terminal] v1.6.0 listening on 127.0.0.1:${PORT}`)
   if (!SUPABASE_URL)     console.warn('[terminal] ⚠ SUPABASE_URL not set — auth will fail')
   if (!SUPABASE_SVC_KEY) console.warn('[terminal] ⚠ SUPABASE_SERVICE_ROLE_KEY not set — auth + audit log disabled')
   if (supabase)          console.log('[terminal] Supabase client ready (auth via getUser)')

@@ -312,7 +312,7 @@ export function TerminalPanel() {
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}>
-            {activeSession?.label ?? 'Terminal'}
+            {activeSession?.customName ?? activeSession?.label ?? 'Terminal'}
           </span>
           {visibleSessions.length > 1 && (
             <span style={{ fontSize: '10px', color: '#525866', flexShrink: 0 }}>

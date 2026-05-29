@@ -1,6 +1,9 @@
 'use client'
 
+import { useState } from 'react'
+import { Pencil } from 'lucide-react'
 import { useTerminalStore } from '@/stores/terminalStore'
+import type { TerminalSession } from '@/stores/terminalStore'
 
 interface Props {
   userEmail: string
@@ -16,6 +19,72 @@ function formatRelativeTime(ms: number | undefined): string {
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `hace ${hrs}h`
   return `hace ${Math.floor(hrs / 24)}d`
+}
+
+// ── Inline-editable session name ──────────────────────────────────────────────
+function SessionName({ session }: { session: TerminalSession }) {
+  const renameSession = useTerminalStore((s) => s.renameSession)
+  const [hovered, setHovered]   = useState(false)
+  const [editing, setEditing]   = useState(false)
+  const [value, setValue]       = useState('')
+
+  function startEdit() {
+    setValue(session.customName ?? session.label)
+    setEditing(true)
+  }
+
+  function commit() {
+    renameSession(session.id, value)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+          if (e.key === 'Escape') setEditing(false)
+        }}
+        style={{
+          background: 'var(--s3)', border: '1px solid var(--acc)',
+          borderRadius: 'var(--r4)', padding: '2px 8px',
+          fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--t1)',
+          outline: 'none', width: '100%', maxWidth: '220px', fontFamily: 'inherit',
+        }}
+      />
+    )
+  }
+
+  return (
+    <div
+      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span style={{
+        fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-sm)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {session.customName ?? session.label}
+      </span>
+      {hovered && (
+        <button
+          onClick={startEdit}
+          title="Renombrar sesión"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', display: 'flex', padding: '0', flexShrink: 0 }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--acc)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--t3)')}
+        >
+          <Pencil size={11} />
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function TerminalGeneralPanel({ userEmail: _userEmail, linuxUser }: Props) {
@@ -107,26 +176,16 @@ export function TerminalGeneralPanel({ userEmail: _userEmail, linuxUser }: Props
                 style={{
                   display: 'flex', alignItems: 'center', gap: '14px',
                   padding: '14px 16px',
-                  background: 'var(--s2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--r12)',
-                  boxShadow: 'var(--shadow-sm)',
+                  background: 'var(--s2)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--r12)', boxShadow: 'var(--shadow-sm)',
                 }}
               >
                 {/* Status dot */}
-                <span style={{
-                  width: '8px', height: '8px', borderRadius: '50%',
-                  background: statusColor, flexShrink: 0,
-                }} />
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
 
-                {/* Label + secondary info */}
+                {/* Name + secondary info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{
-                    fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-sm)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {s.label}
-                  </p>
+                  <SessionName session={s} />
                   <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '2px', fontFamily: 'var(--mono)' }}>
                     {s.cwd
                       ? `📁 ${s.cwd.split('/').slice(-2).join('/')}`
@@ -164,14 +223,8 @@ export function TerminalGeneralPanel({ userEmail: _userEmail, linuxUser }: Props
                       cursor: 'pointer', color: 'var(--t3)', fontSize: 'var(--text-xs)', padding: '5px 10px',
                       transition: 'color 120ms, border-color 120ms',
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#EF4444'
-                      e.currentTarget.style.borderColor = '#EF4444'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = 'var(--t3)'
-                      e.currentTarget.style.borderColor = 'var(--border)'
-                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.borderColor = '#EF4444' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.borderColor = 'var(--border)' }}
                   >
                     Cerrar
                   </button>

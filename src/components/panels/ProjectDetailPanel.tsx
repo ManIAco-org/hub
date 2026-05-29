@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, ListTodo, FileCode2, Terminal, Rocket,
-  FileText, Cpu, Settings, ExternalLink, Github, Save, Plus, Trash2, Shield, Archive,
+  FileText, Cpu, Settings, ExternalLink, Github, Save, Plus, Trash2, Shield, Archive, Pencil,
 } from 'lucide-react'
 import type { Project } from '@/lib/types'
 import { useTerminalStore } from '@/stores/terminalStore'
@@ -220,6 +220,69 @@ function TabMcp({ project }: { project: Project }) {
 }
 
 // ─── Tab: Terminal ────────────────────────────────────────────────────────────
+
+// Inline-editable session name — pencil appears on hover, input on click
+function SessionName({ session }: { session: import('@/stores/terminalStore').TerminalSession }) {
+  const renameSession = useTerminalStore((s) => s.renameSession)
+  const [hovered, setHovered] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [value, setValue]     = useState('')
+
+  function startEdit() {
+    setValue(session.customName ?? session.label)
+    setEditing(true)
+  }
+
+  function commit() {
+    renameSession(session.id, value)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+          if (e.key === 'Escape') setEditing(false)
+        }}
+        style={{
+          background: 'var(--s3)', border: '1px solid var(--acc)', borderRadius: 'var(--r4)',
+          padding: '2px 8px', fontSize: 'var(--text-sm)', fontWeight: 600,
+          color: 'var(--t1)', outline: 'none', width: '100%', maxWidth: '220px', fontFamily: 'inherit',
+        }}
+      />
+    )
+  }
+
+  return (
+    <div
+      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span style={{ fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {session.customName ?? session.label}
+      </span>
+      {hovered && (
+        <button
+          onClick={startEdit}
+          title="Renombrar sesión"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', display: 'flex', padding: '0', flexShrink: 0 }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--acc)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--t3)')}
+        >
+          <Pencil size={11} />
+        </button>
+      )}
+    </div>
+  )
+}
+
 function formatRelativeTime(ms: number | undefined): string {
   if (!ms) return 'Sin actividad'
   const diff = Date.now() - ms
@@ -344,9 +407,7 @@ function TabTerminal({ project }: { project: Project }) {
               >
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.label}
-                  </p>
+                  <SessionName session={s} />
                   <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '2px', fontFamily: 'var(--mono)' }}>
                     {s.cwd ? `📁 ${s.cwd.split('/').slice(-2).join('/')}` : formatRelativeTime(s.lastActivityAt)}
                     {s.gitBranch && s.gitBranch !== 'HEAD' && <span style={{ marginLeft: '10px' }}>🌿 {s.gitBranch}</span>}
