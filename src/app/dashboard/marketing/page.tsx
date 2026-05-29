@@ -1,15 +1,6 @@
-import { Topbar } from '@/components/layout/Topbar'
-import { MarketingPanel } from '@/components/panels/MarketingPanel'
+﻿import { redirect } from 'next/navigation'
 
-export const revalidate = 60
-
+// Marketing root → campaigns list
 export default function MarketingPage() {
-  return (
-    <>
-      <Topbar title="Marketing" />
-      <div style={{ padding: '24px 28px', flex: 1 }}>
-        <MarketingPanel />
-      </div>
-    </>
-  )
+  redirect('/dashboard/marketing/campaigns')
 }
