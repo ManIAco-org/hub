@@ -98,6 +98,39 @@ export interface ClientResource {
   updated_at: string
 }
 
+// ── Marketing ─────────────────────────────────────────────────────────────────
+
+export type CampaignStatus = 'draft' | 'active' | 'paused' | 'closed'
+export type CampaignChannel = 'whatsapp' | 'email' | 'both'
+
+export interface Campaign {
+  id: string
+  name: string
+  icp_prompt: string
+  channel: CampaignChannel
+  owner_email: string
+  status: CampaignStatus
+  created_at: string
+  updated_at: string
+}
+
+export type LeadStatus = 'raw' | 'enriched' | 'approved' | 'sent' | 'replied' | 'closed' | 'rejected'
+
+export interface Lead {
+  id: string
+  campaign_id: string
+  company: string
+  industry: string | null
+  city: string | null
+  website: string | null
+  phone: string | null
+  email: string | null
+  source: string
+  raw_data: Record<string, unknown> | null
+  status: LeadStatus
+  created_at: string
+}
+
 // Panel nav items
 export interface NavItem {
   id: string
