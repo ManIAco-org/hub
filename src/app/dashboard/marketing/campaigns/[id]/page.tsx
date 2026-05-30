@@ -16,7 +16,7 @@ export default async function CampaignDetailPage({ params }: Props) {
 
   const [{ data: campaign }, { count }] = await Promise.all([
     supabase.from('campaigns').select('*').eq('id', id).single(),
-    supabase.from('leads').select('id', { count: 'exact', head: true }).eq('campaign_id', id),
+    supabase.from('campaign_leads').select('lead_global_id', { count: 'exact', head: true }).eq('campaign_id', id),
   ])
 
   if (!campaign) notFound()

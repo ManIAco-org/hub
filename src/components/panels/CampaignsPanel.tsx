@@ -6,6 +6,7 @@ import { Megaphone, Plus, X, MessageCircle, Mail, Layers, ChevronRight, Clock } 
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { Campaign, CampaignChannel, CampaignStatus } from '@/lib/types'
+import { CAMPAIGN_CATEGORIES } from '@/lib/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatRelativeTime(iso: string): string {
@@ -44,6 +45,7 @@ function NewCampaignModal({ ownerEmail, onClose, onCreated }: {
     name: '',
     icp_prompt: '',
     channel: 'whatsapp' as CampaignChannel,
+    category: 'Otras' as string,
   })
 
   const update = (field: keyof typeof form) =>
@@ -61,6 +63,7 @@ function NewCampaignModal({ ownerEmail, onClose, onCreated }: {
           name: form.name.trim(),
           icp_prompt: form.icp_prompt.trim(),
           channel: form.channel,
+          category: form.category,
           owner_email: ownerEmail,
           status: 'draft',
         })
@@ -185,6 +188,16 @@ function NewCampaignModal({ ownerEmail, onClose, onCreated }: {
                 )
               })}
             </div>
+          </div>
+
+          {/* Categoría */}
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>
+              Categoría
+            </label>
+            <select value={form.category} onChange={update('category')} className="input" style={{ height: '38px' }}>
+              {CAMPAIGN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
 
           {/* Actions */}
