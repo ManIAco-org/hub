@@ -20,7 +20,7 @@ const NAV_ITEMS = [
   { href: '/dashboard/clientes',       label: 'Clientes',       icon: Building2 },
   { href: '/dashboard/proyectos',      label: 'Proyectos',      icon: FolderKanban },
   { href: '/dashboard/terminal',       label: 'Terminal',       icon: TerminalSquare },
-  { href: '/dashboard/marketing',      label: 'Marketing',      icon: BarChart3 },
+  { href: '/dashboard/marketing/overview',    label: 'Marketing',      icon: BarChart3 },
   { href: '/dashboard/configuracion',  label: 'Configuración',  icon: Settings2 },
 ] as const
 

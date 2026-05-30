@@ -438,9 +438,9 @@ function TabLeads({ campaign }: { campaign: Campaign }) {
         </div>
       ) : (
         <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r12)', overflow: 'hidden' }}>
-          {/* Header: Empresa | Ciudad | Website | Score | Estado */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 95px', padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--s3)' }}>
-            {['Empresa', 'Ciudad', 'Sitio web', 'Score', 'Estado'].map((h) => (
+          {/* Header: Empresa | Ciudad | Website | Score | Estado | Acciones */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 95px 70px', padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--s3)' }}>
+            {['Empresa', 'Ciudad', 'Sitio web', 'Score', 'Estado', ''].map((h) => (
               <span key={h} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
             ))}
           </div>
@@ -452,7 +452,7 @@ function TabLeads({ campaign }: { campaign: Campaign }) {
                 <div key={`${row.campaign_id}-${row.lead_global_id}`}
                   onClick={() => setSelectedRow(row)}
                   style={{
-                    display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 95px',
+                    display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 95px 70px',
                     padding: '10px 16px',
                     borderBottom: i < displayed.length - 1 ? '1px solid var(--border)' : 'none',
                     alignItems: 'center', cursor: 'pointer', transition: 'background 100ms',
@@ -497,6 +497,35 @@ function TabLeads({ campaign }: { campaign: Campaign }) {
                     <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: STATUS_COLORS[row.status], flexShrink: 0 }} />
                     {STATUS_LABELS[row.status]}
                   </span>
+
+                  {/* Row actions */}
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setSelectedRow(row)}
+                      title="Ver detalle"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: '12px', padding: '2px 4px', borderRadius: '4px', whiteSpace: 'nowrap' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--acc)'; e.currentTarget.style.background = 'var(--acc-d)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'none' }}
+                    >
+                      👁
+                    </button>
+                    {row.status !== 'rejected' && (
+                      <button
+                        onClick={async () => {
+                          const supa = createClient()
+                          await supa.from('campaign_leads').update({ status: 'rejected' })
+                            .eq('campaign_id', row.campaign_id).eq('lead_global_id', row.lead_global_id)
+                          toast.success(`${lead.company} excluido`)
+                        }}
+                        title="Excluir de campaña"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: '12px', padding: '2px 4px', borderRadius: '4px', whiteSpace: 'nowrap' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.background = '#EF444410' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'none' }}
+                      >
+                        🚫
+                      </button>
+                    )}
+                  </div>
                 </div>
               )
             })}
