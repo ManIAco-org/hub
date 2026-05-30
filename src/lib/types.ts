@@ -100,18 +100,41 @@ export interface ClientResource {
 
 // ── Marketing ─────────────────────────────────────────────────────────────────
 
-export type CampaignStatus = 'draft' | 'active' | 'paused' | 'closed'
+export type CampaignStatus  = 'draft' | 'active' | 'paused' | 'closed'
 export type CampaignChannel = 'whatsapp' | 'email' | 'both'
+
+export const CAMPAIGN_CATEGORIES = [
+  'Inmobiliarias', 'Restaurantes', 'Talleres', 'Agencias',
+  'Comercio', 'Servicios', 'Salud', 'Otras',
+] as const
+export type CampaignCategory = typeof CAMPAIGN_CATEGORIES[number]
 
 export interface Campaign {
   id: string
   name: string
   icp_prompt: string
   channel: CampaignChannel
+  category: CampaignCategory
   owner_email: string
   status: CampaignStatus
   created_at: string
   updated_at: string
+}
+
+// ── Agent jobs ─────────────────────────────────────────────────────────────────
+export type AgentJobStatus = 'queued' | 'running' | 'done' | 'failed'
+export type AgentJobType   = 'scrape' | 'enrich' | 'scrape_enrich'
+
+export interface AgentJob {
+  id: string
+  type: AgentJobType
+  status: AgentJobStatus
+  params: Record<string, unknown>
+  result: Record<string, unknown> | null
+  started_at: string | null
+  finished_at: string | null
+  created_by: string
+  created_at: string
 }
 
 export type LeadStatus = 'raw' | 'enriched' | 'approved' | 'sent' | 'replied' | 'closed' | 'rejected'
@@ -124,25 +147,40 @@ export interface EnrichedData {
   fit_reason?: string | null
 }
 
-export interface Lead {
+/** Canonical global lead record — shared across campaigns */
+export interface LeadGlobal {
   id: string
-  campaign_id: string
-  company: string
-  industry: string | null
-  city: string | null
+  place_id: string | null
   website: string | null
+  company: string
   phone: string | null
   email: string | null
-  source: string
-  place_id: string | null
+  industry: string | null
+  city: string | null
   raw_data: Record<string, unknown> | null
-  status: LeadStatus
-  fit_score: number | null
   enriched_data: EnrichedData | null
+  fit_score: number | null
   enrichment_error: string | null
   enriched_at: string | null
-  created_at: string
+  first_seen_at: string
+  last_updated_at: string
 }
+
+/** Per-campaign lead entry (N:M pivot) */
+export interface CampaignLead {
+  campaign_id: string
+  lead_global_id: string
+  status: LeadStatus
+  added_at: string
+}
+
+/** Joined view used in UI: campaign_leads + leads_global */
+export interface CampaignLeadFull extends CampaignLead {
+  leads_global: LeadGlobal
+}
+
+/** @deprecated — replaced by LeadGlobal + CampaignLead */
+export type Lead = LeadGlobal & { status: LeadStatus; added_at: string }
 
 // Panel nav items
 export interface NavItem {
