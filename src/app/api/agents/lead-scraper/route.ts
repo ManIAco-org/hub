@@ -115,7 +115,13 @@ Ejemplos:
   }
 }
 
+/** Courtesy sleep between paginated SerpAPI requests */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
 // ── Route Handler ─────────────────────────────────────────────────────────────
+// Vercel Pro: allow up to 60s for paginated scrapes
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
   try {
     // Auth check
@@ -124,14 +130,14 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
     // Validate body
-    const body = await req.json() as { campaignId?: string; count?: number }
-    const { campaignId, count: rawCount } = body
+    const body = await req.json() as { campaignId?: string; count?: number; requireWebsite?: boolean }
+    const { campaignId, count: rawCount, requireWebsite = true } = body
 
     if (!campaignId || typeof campaignId !== 'string') {
       return NextResponse.json({ error: 'campaignId requerido' }, { status: 400 })
     }
 
-    const count = Math.min(Math.max(1, rawCount ?? 20), 50)
+    const count = Math.min(Math.max(1, rawCount ?? 20), 100)
 
     // Fetch campaign
     const { data: campaign, error: campaignError } = await supabase
@@ -155,52 +161,83 @@ export async function POST(req: NextRequest) {
 
     console.log(`[lead-scraper] campaign=${campaignId} query="${query}" location="${location}" coords=${coords ?? 'none'}`)
 
-    // ── Call SerpAPI Google Maps ────────────────────────────────────────────
-    const params = new URLSearchParams({
-      engine:  'google_maps',
-      q:       coords ? query : `${query} ${location}`.trim(), // embed location in query when no coords
-      type:    'search',
-      api_key: serpApiKey,
-      hl:      'es',
-    })
-    if (coords) params.set('ll', `@${coords},14z`)
+    // ── Call SerpAPI Google Maps (paginated: max 20/request, use 'start' param) ──
+    const baseQ   = coords ? query : `${query} ${location}`.trim()
+    const baseLL  = coords ? `@${coords},14z` : null
+    const requestsNeeded = Math.ceil(count / 20)
 
-    console.log(`[lead-scraper] SerpAPI Maps request: q="${params.get('q')}" ll=${params.get('ll') ?? 'none'}`)
+    console.log(`[lead-scraper] Maps: q="${baseQ}" ll=${baseLL ?? 'none'} count=${count} → ${requestsNeeded} request(s)`)
 
-    const serpRes = await fetch(`${SERPAPI_URL}?${params.toString()}`, {
-      headers: { Accept: 'application/json' },
-      signal:  AbortSignal.timeout(25_000),
-    })
+    const allPlaces: MapsPlace[] = []
 
-    if (!serpRes.ok) {
-      const text = await serpRes.text().catch(() => '')
-      console.error(`[lead-scraper] SerpAPI HTTP ${serpRes.status}: ${text.slice(0, 200)}`)
-      return NextResponse.json({ error: `Error de SerpAPI: ${serpRes.status}` }, { status: 502 })
+    for (let page = 0; page < requestsNeeded; page++) {
+      const start = page * 20
+      const params = new URLSearchParams({
+        engine:  'google_maps',
+        q:       baseQ,
+        type:    'search',
+        api_key: serpApiKey,
+        hl:      'es',
+        start:   String(start),
+      })
+      if (baseLL) params.set('ll', baseLL)
+
+      const serpRes = await fetch(`${SERPAPI_URL}?${params.toString()}`, {
+        headers: { Accept: 'application/json' },
+        signal:  AbortSignal.timeout(25_000),
+      })
+
+      if (!serpRes.ok) {
+        const text = await serpRes.text().catch(() => '')
+        console.error(`[lead-scraper] SerpAPI HTTP ${serpRes.status} (page ${page}): ${text.slice(0, 200)}`)
+        // If first page fails hard, abort. If subsequent pages fail, use what we have.
+        if (page === 0) {
+          return NextResponse.json({ error: `Error de SerpAPI: ${serpRes.status}` }, { status: 502 })
+        }
+        break
+      }
+
+      const mapsData = await serpRes.json() as MapsResponse
+
+      if (mapsData.error) {
+        console.error(`[lead-scraper] SerpAPI error (page ${page}): ${mapsData.error}`)
+        if (page === 0) return NextResponse.json({ error: `SerpAPI: ${mapsData.error}` }, { status: 502 })
+        break
+      }
+
+      const pagePlaces = mapsData.local_results ?? []
+      console.log(`[lead-scraper] Page ${page} (start=${start}): ${pagePlaces.length} places`)
+
+      if (pagePlaces.length === 0) break  // no more results
+
+      allPlaces.push(...pagePlaces)
+
+      // Courtesy sleep between requests (skip after last page)
+      if (page < requestsNeeded - 1 && allPlaces.length < count) {
+        await sleep(500)
+      }
     }
 
-    const mapsData = await serpRes.json() as MapsResponse
+    console.log(`[lead-scraper] Total fetched: ${allPlaces.length} places`)
 
-    if (mapsData.error) {
-      console.error(`[lead-scraper] SerpAPI error: ${mapsData.error}`)
-      return NextResponse.json({ error: `SerpAPI: ${mapsData.error}` }, { status: 502 })
-    }
-
-    const places = mapsData.local_results ?? []
-    console.log(`[lead-scraper] Maps returned ${places.length} places`)
-
-    if (places.length === 0) {
+    if (allPlaces.length === 0) {
       return NextResponse.json({
-        inserted: 0, skipped_duplicates: 0,
+        inserted: 0, skipped_duplicates: 0, requests: requestsNeeded,
         query, location,
         message: 'Google Maps no devolvió resultados para ese ICP',
       })
     }
 
     // ── Filter and build lead rows ──────────────────────────────────────────
-    const validPlaces = places.slice(0, count).filter((p) => {
+    const validPlaces = allPlaces.slice(0, count).filter((p) => {
       if (!p.title) return false
-      // Skip leads with no contactable info
-      if (!p.website && !p.phone) return false
+      if (requireWebsite) {
+        // Strict: only leads with a real website (best for enrichment + personalized outreach)
+        if (!p.website) return false
+      } else {
+        // Loose: at least one contact vector (phone OR website)
+        if (!p.website && !p.phone) return false
+      }
       return true
     })
 
@@ -243,7 +280,7 @@ export async function POST(req: NextRequest) {
         },
       }))
 
-    const skipped = places.slice(0, count).length - newRows.length
+    const skipped = allPlaces.slice(0, count).length - newRows.length
 
     if (newRows.length === 0) {
       return NextResponse.json({ inserted: 0, skipped_duplicates: skipped, query, location })
@@ -266,6 +303,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       inserted:           insertedCount,
       skipped_duplicates: skipped,
+      requests:           requestsNeeded,
       query,
       location,
     })

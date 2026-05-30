@@ -38,8 +38,15 @@ function ScrapeModal({ campaign, onClose, onDone }: {
   onDone: () => void
 }) {
   const [count, setCount] = useState(20)
+  const [requireWebsite, setRequireWebsite] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{ inserted: number; skipped: number; query?: string; location?: string } | null>(null)
+  const [result, setResult] = useState<{
+    inserted: number; skipped: number; requests?: number; query?: string; location?: string
+  } | null>(null)
+
+  // Cost preview: each SerpAPI Maps request = $0.01, max 20 results each
+  const requestsEstimate = Math.ceil(count / 20)
+  const costEstimate = (requestsEstimate * 0.01).toFixed(2)
 
   async function handleScrape() {
     setLoading(true)
@@ -48,13 +55,22 @@ function ScrapeModal({ campaign, onClose, onDone }: {
       const res = await fetch('/api/agents/lead-scraper', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId: campaign.id, count }),
+        body: JSON.stringify({ campaignId: campaign.id, count, requireWebsite }),
       })
-      const json = await res.json() as { inserted?: number; skipped_duplicates?: number; error?: string; query?: string; location?: string }
+      const json = await res.json() as {
+        inserted?: number; skipped_duplicates?: number; requests?: number
+        error?: string; query?: string; location?: string
+      }
       if (!res.ok || json.error) {
         toast.error(json.error ?? 'Error al scrapear')
       } else {
-        setResult({ inserted: json.inserted ?? 0, skipped: json.skipped_duplicates ?? 0, query: json.query, location: json.location })
+        setResult({
+          inserted:  json.inserted ?? 0,
+          skipped:   json.skipped_duplicates ?? 0,
+          requests:  json.requests,
+          query:     json.query,
+          location:  json.location,
+        })
         if ((json.inserted ?? 0) > 0) toast.success(`${json.inserted} leads agregados desde Google Maps`)
         onDone()
       }
@@ -116,14 +132,48 @@ function ScrapeModal({ campaign, onClose, onDone }: {
             style={{ height: '38px' }}
             disabled={loading}
           >
-            {[10, 20, 30, 50].map((n) => (
+            {[10, 20, 30, 50, 100].map((n) => (
               <option key={n} value={n}>{n} leads</option>
             ))}
           </select>
-          <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '4px' }}>
-            Los duplicados (mismo sitio web) se ignoran automáticamente.
-          </p>
+
+          {/* Cost warning for >20 results (= >1 SerpAPI request) */}
+          {count > 20 ? (
+            <p style={{ fontSize: '11px', color: 'var(--warn)', marginTop: '4px' }}>
+              ⚡ {requestsEstimate} requests SerpAPI (~${costEstimate}) · duplicados se ignoran
+            </p>
+          ) : (
+            <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '4px' }}>
+              1 request SerpAPI (~$0.01) · duplicados se ignoran
+            </p>
+          )}
         </div>
+
+        {/* requireWebsite toggle */}
+        <label
+          style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}
+          title="Si está activado, descarta negocios sin web. Mejor calidad para enriquecer y outreach personalizado. Si lo desactivás, trae también los que solo tienen teléfono (útil para WhatsApp directo)."
+        >
+          <div style={{ position: 'relative', flexShrink: 0, marginTop: '1px' }}>
+            <input
+              type="checkbox"
+              checked={requireWebsite}
+              onChange={(e) => setRequireWebsite(e.target.checked)}
+              disabled={loading}
+              style={{ width: '16px', height: '16px', accentColor: 'var(--acc)', cursor: 'pointer' }}
+            />
+          </div>
+          <div>
+            <p style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t1)', lineHeight: 1.3 }}>
+              Solo leads con sitio web <span style={{ color: 'var(--t3)', fontWeight: 400 }}>(recomendado)</span>
+            </p>
+            <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '2px', lineHeight: 1.4 }}>
+              {requireWebsite
+                ? 'Descarta negocios sin web — mejor calidad para enriquecimiento y outreach personalizado.'
+                : 'Incluye negocios sin web — más volumen, útil para WhatsApp directo por teléfono.'}
+            </p>
+          </div>
+        </label>
 
         {/* Parsed query preview (after scrape) */}
         {result && (result.query || result.location) && (
@@ -141,16 +191,22 @@ function ScrapeModal({ campaign, onClose, onDone }: {
           <div style={{
             background: 'var(--acc-d)', border: '1px solid var(--acc-b)',
             borderRadius: 'var(--r8)', padding: '12px',
-            display: 'flex', gap: '20px',
+            display: 'flex', gap: '20px', flexWrap: 'wrap',
           }}>
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', minWidth: '60px' }}>
               <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--acc)', lineHeight: 1 }}>{result.inserted}</p>
               <p style={{ fontSize: '11px', color: 'var(--t2)', marginTop: '2px' }}>insertados</p>
             </div>
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', minWidth: '60px' }}>
               <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--t3)', lineHeight: 1 }}>{result.skipped}</p>
-              <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '2px' }}>duplicados / sin contacto</p>
+              <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '2px' }}>ignorados</p>
             </div>
+            {(result.requests ?? 1) > 1 && (
+              <div style={{ textAlign: 'center', minWidth: '60px' }}>
+                <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--t2)', lineHeight: 1 }}>{result.requests}</p>
+                <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '2px' }}>requests</p>
+              </div>
+            )}
           </div>
         )}
 
