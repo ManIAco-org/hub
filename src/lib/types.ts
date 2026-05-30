@@ -116,6 +116,14 @@ export interface Campaign {
 
 export type LeadStatus = 'raw' | 'enriched' | 'approved' | 'sent' | 'replied' | 'closed' | 'rejected'
 
+export interface EnrichedData {
+  contact_name?: string | null
+  linkedin?: string | null
+  bio?: string | null
+  fit_score?: number | null
+  fit_reason?: string | null
+}
+
 export interface Lead {
   id: string
   campaign_id: string
@@ -129,6 +137,10 @@ export interface Lead {
   place_id: string | null
   raw_data: Record<string, unknown> | null
   status: LeadStatus
+  fit_score: number | null
+  enriched_data: EnrichedData | null
+  enrichment_error: string | null
+  enriched_at: string | null
   created_at: string
 }
 
