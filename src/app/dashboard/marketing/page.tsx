@@ -1,6 +1,6 @@
 ﻿import { redirect } from 'next/navigation'
 
-// Marketing root → campaigns list
+// Marketing root → overview
 export default function MarketingPage() {
-  redirect('/dashboard/marketing/campaigns')
+  redirect('/dashboard/marketing/overview')
 }
