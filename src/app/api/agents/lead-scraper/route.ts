@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { scrapeLeads } from '@/lib/agents/scrapeLeads'
+import { scrapeLeads, radiusToZoom } from '@/lib/agents/scrapeLeads'
 
 export const maxDuration = 60
 
@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-    const body = await req.json() as { campaignId?: string; count?: number; requireWebsite?: boolean }
-    const { campaignId, count: rawCount, requireWebsite = true } = body
+    const body = await req.json() as { campaignId?: string; radiusKm?: number }
+    const { campaignId, radiusKm = 5 } = body
     if (!campaignId) return NextResponse.json({ error: 'campaignId requerido' }, { status: 400 })
 
     const { data: campaign } = await supabase.from('campaigns').select('id, icp_prompt').eq('id', campaignId).single()
@@ -23,19 +23,17 @@ export async function POST(req: NextRequest) {
     const result = await scrapeLeads({
       supabase,
       campaignId,
-      icpPrompt: campaign.icp_prompt,
-      count: Math.min(Math.max(1, rawCount ?? 20), 100),
-      requireWebsite,
+      icpPrompt:  campaign.icp_prompt,
+      radiusZoom: radiusToZoom(Math.max(1, Math.min(50, radiusKm))),
       serpApiKey,
     })
 
     return NextResponse.json({
-      inserted:           result.inserted,
-      skipped_duplicates: result.skipped,
-      reused_from_cache:  result.reusedFromCache,
-      requests:           result.requests,
-      query:              result.query,
-      location:           result.location,
+      inserted:        result.inserted,
+      skipped:         result.skipped,
+      reusedFromCache: result.reusedFromCache,
+      requests:        result.requests,
+      queries:         result.queries,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error inesperado'
