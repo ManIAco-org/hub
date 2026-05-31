@@ -134,7 +134,6 @@ export function DraftApprovalQueue({ initialDrafts, userEmail }: {
   async function batchApprove() {
     if (selected.size === 0) return
     setProcessing(true)
-    const { data, error } = await supabase.rpc ? null : null // fallback to fetch
     const res = await fetch('/api/drafts/batch-approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
