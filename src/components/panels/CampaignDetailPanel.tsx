@@ -434,6 +434,58 @@ function TabResumen({ campaign, leadCount }: { campaign: Campaign; leadCount: nu
   )
 }
 
+// ── Action Card ───────────────────────────────────────────────────────────────
+function ActionCard({ icon, title, isRunning, runColor, count, countColor, countLabel, subtext, costText, disabled, onAction, actionLabel, actionIcon, variant = 'secondary' }: {
+  icon: React.ReactNode
+  title: string
+  isRunning: boolean
+  runColor: string
+  count: number
+  countColor?: string
+  countLabel: string
+  subtext: string
+  costText: string
+  disabled?: boolean
+  onAction: () => void
+  actionLabel: string
+  actionIcon: React.ReactNode
+  variant?: 'primary' | 'secondary'
+}) {
+  const isDisabled = disabled || isRunning
+  return (
+    <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? runColor : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
+      {isRunning && (
+        <div className="animate-pulse" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: runColor }} />
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {icon}
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{title}</span>
+        </div>
+        {isRunning && <span style={{ fontSize: '10px', color: runColor, fontWeight: 600 }}>corriendo...</span>}
+      </div>
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
+        <span style={{ fontSize: '22px', fontWeight: 700, color: countColor ?? 'var(--t1)', fontFamily: 'var(--mono)' }}>{count}</span>
+        <span style={{ fontSize: '11px', color: 'var(--t3)' }}>{countLabel}</span>
+      </div>
+      <div style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.5 }}>
+        <span>{subtext}</span>
+        <br />
+        <span style={{ opacity: 0.6 }}>{costText}</span>
+      </div>
+      <button
+        onClick={onAction}
+        disabled={isDisabled}
+        className={variant === 'primary' ? 'btn-primary' : 'btn-secondary'}
+        style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center', opacity: isDisabled ? 0.4 : 1 }}
+      >
+        {actionIcon}
+        {isRunning ? 'Corriendo...' : actionLabel}
+      </button>
+    </div>
+  )
+}
+
 // ── Tab: Leads ────────────────────────────────────────────────────────────────
 type SortBy = 'fit_desc' | 'fit_asc' | 'created_desc' | 'name_asc'
 
@@ -538,114 +590,65 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
 
       {/* ── 3 Action cards ───────────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-
         {/* Card 1: Buscar */}
-        {(() => {
-          const isRunning = runningAction === 'search'
-          return (
-            <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? 'var(--acc)' : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
-              {isRunning && <div className="animate-pulse" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'var(--acc)' }} />}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Search size={13} color="var(--acc)" />
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Buscar</span>
-                </div>
-                {isRunning && <span style={{ fontSize: '10px', color: 'var(--acc)', fontWeight: 600 }}>corriendo...</span>}
-              </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
-                <span style={{ fontSize: '22px', fontWeight: 700, color: 'var(--t1)', fontFamily: 'var(--mono)' }}>{rows.length}</span>
-                <span style={{ fontSize: '11px', color: 'var(--t3)' }}>leads totales</span>
-              </div>
-              <div style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
-                {rawCount > 0 ? <span style={{ color: '#525866' }}>{rawCount} sin procesar</span> : rows.length === 0 ? 'Sin leads todavía' : 'Todos procesados'}
-                <br /><span style={{ color: 'var(--t3)', opacity: 0.7 }}>~$0.002/request · SerpAPI</span>
-              </div>
-              <button onClick={() => { setShowSearch(true) }} className="btn-primary"
-                style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
-                <Search size={12} />Buscar más
-              </button>
-            </div>
-          )
-        })()}
-
+        <ActionCard
+          icon={<Search size={13} color="var(--acc)" />}
+          title="Buscar"
+          isRunning={runningAction === 'search'}
+          runColor="var(--acc)"
+          count={rows.length}
+          countLabel="leads totales"
+          subtext={rawCount > 0 ? `${rawCount} sin procesar` : rows.length === 0 ? 'Sin leads todavía' : 'Todos procesados'}
+          costText="~$0.002/request · SerpAPI"
+          onAction={() => setShowSearch(true)}
+          actionLabel="Buscar más"
+          actionIcon={<Search size={12} />}
+          variant="primary"
+        />
         {/* Card 2: Enriquecer */}
-        {(() => {
-          const isRunning = runningAction === 'enrich'
-          const estCost = (rawCount * 0.001).toFixed(3)
-          return (
-            <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? '#22C55E' : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
-              {isRunning && <div className="animate-pulse" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: '#22C55E' }} />}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Zap size={13} color="#22C55E" />
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Enriquecer</span>
-                </div>
-                {isRunning && <span style={{ fontSize: '10px', color: '#22C55E', fontWeight: 600 }}>corriendo...</span>}
-              </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
-                <span style={{ fontSize: '22px', fontWeight: 700, color: rawCount > 0 ? '#22C55E' : 'var(--t3)', fontFamily: 'var(--mono)' }}>{rawCount}</span>
-                <span style={{ fontSize: '11px', color: 'var(--t3)' }}>sin enriquecer</span>
-              </div>
-              <div style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
-                {enrichedCount > 0 ? <span>{enrichedCount} ya enriquecidos</span> : <span>score 0-10 + bio + razón</span>}
-                <br /><span style={{ opacity: 0.7 }}>~${estCost} est. · Haiku</span>
-              </div>
-              <button
-                onClick={() => {
-                  if (rawCount === 0 || isRunning) return
-                  setRunningAction('enrich')
-                  toast.loading(`Enriqueciendo ${rawCount} leads...`, { id: 'enrich-bg' })
-                  fetch('/api/agents/enrich', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ campaignId: campaign.id, max: 100 }),
-                  })
-                    .then(r => r.json())
-                    .then((j: { job_id?: string; error?: string }) => {
-                      if (j.error) { toast.error(j.error, { id: 'enrich-bg' }); setRunningAction(null) }
-                      else toast.success('Enriquecimiento corriendo en background', { id: 'enrich-bg', duration: 5000 })
-                    })
-                    .catch(() => { toast.error('Error de red', { id: 'enrich-bg' }); setRunningAction(null) })
-                }}
-                disabled={rawCount === 0 || isRunning}
-                className="btn-secondary"
-                style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center', opacity: (rawCount === 0 || isRunning) ? 0.4 : 1 }}>
-                <Zap size={12} />{isRunning ? 'Corriendo...' : rawCount > 0 ? `Enriquecer (${rawCount})` : 'Sin pendientes'}
-              </button>
-            </div>
-          )
-        })()}
-
+        <ActionCard
+          icon={<Zap size={13} color="#22C55E" />}
+          title="Enriquecer"
+          isRunning={runningAction === 'enrich'}
+          runColor="#22C55E"
+          count={rawCount}
+          countColor={rawCount > 0 ? '#22C55E' : undefined}
+          countLabel="sin enriquecer"
+          subtext={enrichedCount > 0 ? `${enrichedCount} ya enriquecidos` : 'score 0-10 + bio + razón'}
+          costText={`~$${(rawCount * 0.001).toFixed(3)} est. · Haiku`}
+          disabled={rawCount === 0}
+          onAction={() => {
+            if (rawCount === 0 || runningAction === 'enrich') return
+            setRunningAction('enrich')
+            toast.loading(`Enriqueciendo ${rawCount} leads...`, { id: 'enrich-bg' })
+            fetch('/api/agents/enrich', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: campaign.id, max: 100 }) })
+              .then(r => r.json())
+              .then((j: { job_id?: string; error?: string }) => {
+                if (j.error) { toast.error(j.error, { id: 'enrich-bg' }); setRunningAction(null) }
+                else toast.success('Enriquecimiento corriendo en background', { id: 'enrich-bg', duration: 5000 })
+              })
+              .catch(() => { toast.error('Error de red', { id: 'enrich-bg' }); setRunningAction(null) })
+          }}
+          actionLabel={rawCount > 0 ? `Enriquecer (${rawCount})` : 'Sin pendientes'}
+          actionIcon={<Zap size={12} />}
+        />
         {/* Card 3: Drafts */}
-        {(() => {
-          const isRunning = runningAction === 'write'
-          const estCost = (writerEligible * 0.004).toFixed(3)
-          return (
-            <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? 'var(--acc)' : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
-              {isRunning && <div className="animate-pulse" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'var(--acc)' }} />}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <PenLine size={13} color="var(--acc)" />
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Drafts</span>
-                </div>
-                {isRunning && <span style={{ fontSize: '10px', color: 'var(--acc)', fontWeight: 600 }}>corriendo...</span>}
-              </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
-                <span style={{ fontSize: '22px', fontWeight: 700, color: writerEligible > 0 ? 'var(--acc)' : 'var(--t3)', fontFamily: 'var(--mono)' }}>{writerEligible}</span>
-                <span style={{ fontSize: '11px', color: 'var(--t3)' }}>listos (score ≥ 5)</span>
-              </div>
-              <div style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
-                {campaign.channel === 'email' ? 'Email personalizado' : 'WhatsApp ≤300 chars'}
-                <br /><span style={{ opacity: 0.7 }}>~${estCost} est. · Sonnet</span>
-              </div>
-              <button onClick={() => { if (!isRunning) setShowWriter(true) }} disabled={writerEligible === 0 || isRunning}
-                className="btn-secondary"
-                style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center', opacity: (writerEligible === 0 || isRunning) ? 0.4 : 1 }}>
-                <PenLine size={12} />{isRunning ? 'Corriendo...' : writerEligible > 0 ? `Generar (${writerEligible})` : 'Sin elegibles'}
-              </button>
-            </div>
-          )
-        })()}
+        <ActionCard
+          icon={<PenLine size={13} color="var(--acc)" />}
+          title="Drafts"
+          isRunning={runningAction === 'write'}
+          runColor="var(--acc)"
+          count={writerEligible}
+          countColor={writerEligible > 0 ? 'var(--acc)' : undefined}
+          countLabel="listos (score ≥ 5)"
+          subtext={campaign.channel === 'email' ? 'Email personalizado' : 'WhatsApp ≤300 chars'}
+          costText={`~$${(writerEligible * 0.004).toFixed(3)} est. · Sonnet`}
+          disabled={writerEligible === 0}
+          onAction={() => { if (runningAction !== 'write') setShowWriter(true) }}
+          actionLabel={writerEligible > 0 ? `Generar (${writerEligible})` : 'Sin elegibles'}
+          actionIcon={<PenLine size={12} />}
+        />
+      </div>
 
       {/* ── Filtros y tabla ───────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
