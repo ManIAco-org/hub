@@ -162,35 +162,12 @@ export async function scrapeLeads(opts: ScrapeLeadsOptions): Promise<ScrapeLeads
   // ── 1. Generate search query variants ────────────────────────────────────────
   const queries = await generateSearchQueries(icpPrompt, apiKey)
 
-  // ── 2. IDs already in this specific campaign (don't re-add) ─────────────────
-  const { data: alreadyInCampaign } = await supabase
-    .from('campaign_leads').select('lead_global_id').eq('campaign_id', campaignId)
-  const inCampaignIds = new Set(alreadyInCampaign?.map((r) => r.lead_global_id) ?? [])
-
-  // ── 3. Reuse leads already in leads_global not yet in this campaign ───────────
-  let reusedFromCache = 0
-  const reusedIds: string[] = []
-  const primaryCity = queries[0]?.location.split(' ')[0] ?? ''
-
-  if (primaryCity.length >= 3) {
-    const { data: cached } = await supabase
-      .from('leads_global').select('id').ilike('city', `%${primaryCity}%`)
-    const eligible = cached?.filter((r) => !inCampaignIds.has(r.id)) ?? []
-    for (const row of eligible) reusedIds.push(row.id)
-    if (reusedIds.length > 0) {
-      await supabase.from('campaign_leads').insert(
-        reusedIds.map((id) => ({ campaign_id: campaignId, lead_global_id: id, status: 'raw' }))
-      )
-      reusedFromCache = reusedIds.length
-    }
-  }
-
-  // ── 4. Fetch existing dedup keys ──────────────────────────────────────────────
+  // ── 2. Fetch existing dedup keys ──────────────────────────────────────────────
   const { data: existingGlobal } = await supabase.from('leads_global').select('id, place_id, website')
   const existingPlaceIds = new Set(existingGlobal?.map((r) => r.place_id).filter(Boolean) ?? [])
   const existingWebsites  = new Set(existingGlobal?.map((r) => r.website).filter(Boolean) ?? [])
 
-  // ── 5. Call SerpAPI for each query variant, exhaustive pagination ─────────────
+  // ── 3. Call SerpAPI for each query variant, exhaustive pagination ─────────────
   const seenPlaceIds = new Set<string>()
   const allValidPlaces: MapsPlace[] = []
   let totalRequests = 0
@@ -244,7 +221,7 @@ export async function scrapeLeads(opts: ScrapeLeadsOptions): Promise<ScrapeLeads
     if (queries.indexOf(sq) < queries.length - 1) await sleep(500)
   }
 
-  // ── 6. Further filter: already in leads_global → skip ────────────────────────
+  // ── 4. Further filter: already in leads_global → skip ────────────────────────
   const newPlaces = allValidPlaces.filter((p) => {
     if (p.place_id && existingPlaceIds.has(p.place_id)) return false
     const web = normalizeWebsite(p.website)
@@ -252,7 +229,7 @@ export async function scrapeLeads(opts: ScrapeLeadsOptions): Promise<ScrapeLeads
     return true
   })
 
-  // ── 7. Insert one by one to avoid batch constraint failures ──────────────────
+  // ── 5. Insert one by one to avoid batch constraint failures ──────────────────
   const insertedIds: string[] = []
   let skipped = allValidPlaces.length - newPlaces.length
 
@@ -275,7 +252,7 @@ export async function scrapeLeads(opts: ScrapeLeadsOptions): Promise<ScrapeLeads
     }
   }
 
-  // ── 8. Link new leads to campaign ────────────────────────────────────────────
+  // ── 6. Link new leads to campaign ────────────────────────────────────────────
   if (insertedIds.length > 0) {
     await supabase.from('campaign_leads').insert(
       insertedIds.map((id) => ({ campaign_id: campaignId, lead_global_id: id, status: 'raw' }))
@@ -285,7 +262,7 @@ export async function scrapeLeads(opts: ScrapeLeadsOptions): Promise<ScrapeLeads
   return {
     inserted:        insertedIds.length,
     skipped,
-    reusedFromCache,
+    reusedFromCache: 0,
     requests:        totalRequests,
     queries:         queries.map((q) => q.query),
     insertedIds,

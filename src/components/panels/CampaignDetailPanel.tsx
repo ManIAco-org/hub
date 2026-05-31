@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import {
   BarChart3, Users, Search, Globe, Phone, Mail,
-  ExternalLink, RefreshCw, X, Loader2, MapPin, Star, PenLine, Zap, CheckSquare,
+  ExternalLink, RefreshCw, X, MapPin, Star, PenLine,
+  CheckSquare, Trash2, Download, DollarSign, Workflow,
 } from 'lucide-react'
 import type { Campaign, CampaignLeadFull, LeadGlobal, LeadStatus, EnrichedData, DraftStatus } from '@/lib/types'
 import { DraftApprovalQueue } from '@/components/panels/DraftApprovalQueue'
@@ -15,8 +16,8 @@ const STATUS_COLORS: Record<LeadStatus, string> = {
   raw:      '#525866',
   enriched: '#06B6D4',
   approved: '#A3E635',
-  sent:     '#A3E635',
-  replied:  '#22C55E',
+  sent:     '#22C55E',
+  replied:  '#8B5CF6',
   closed:   '#525866',
   rejected: '#EF4444',
 }
@@ -30,6 +31,19 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   closed:   'Cerrado',
   rejected: 'Rechazado',
 }
+
+// Pipeline step accent colors
+const COL_HAIKU    = '#06B6D4'
+const COL_SONNET   = 'var(--acc)'
+const COL_APPROVED = '#22C55E'
+
+const SIGNERS = [
+  { email: 'franco.sanmartin@maniaco.online', name: 'Franco' },
+  { email: 'luis.giannasi@maniaco.online',    name: 'Lucho' },
+  { email: 'noelia.bottallo@maniaco.online',  name: 'Noe' },
+]
+
+type RunningAction = 'search' | 'enrich' | 'write' | null
 
 // ── Fit Score Badge ───────────────────────────────────────────────────────────
 function FitScoreBadge({ score }: { score: number | null | undefined }) {
@@ -130,7 +144,7 @@ function LeadDrawer({ lead, status, campaignId, onClose }: {
           </div>
 
           {/* Enrichment data */}
-          {enriched && status === 'enriched' && (
+          {enriched && (status === 'enriched' || status === 'approved' || status === 'sent') && (
             <div style={{ background: 'var(--acc-d)', border: '1px solid var(--acc-b)', borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--acc)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Enriquecimiento</p>
               {enriched.bio && <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t1)', lineHeight: 1.5 }}>{enriched.bio}</p>}
@@ -194,15 +208,15 @@ function LeadDrawer({ lead, status, campaignId, onClose }: {
   )
 }
 
-// ── Nueva Búsqueda Modal (scrape + enrich integrado) ──────────────────────────
+// ── Search Modal (scrape, fire-and-forget) ────────────────────────────────────
 function SearchModal({ campaign, onClose, onStarted }: { campaign: Campaign; onClose: () => void; onStarted?: () => void }) {
   const [radiusKm, setRadiusKm] = useState(5)
 
   const RADIUS_OPTIONS = [
-    { km: 2,  label: '2 km — muy céntrico',      est: '30-80 resultados' },
-    { km: 5,  label: '5 km — barrios cercanos',   est: '80-200 resultados' },
-    { km: 10, label: '10 km — toda la ciudad',    est: '150-400 resultados' },
-    { km: 20, label: '20 km — área metropolitana', est: '300-500+ resultados' },
+    { km: 2,  label: '2 km — muy céntrico',         est: '30-80 resultados' },
+    { km: 5,  label: '5 km — barrios cercanos',      est: '80-200 resultados' },
+    { km: 10, label: '10 km — toda la ciudad',       est: '150-400 resultados' },
+    { km: 20, label: '20 km — área metropolitana',   est: '300-500+ resultados' },
   ]
 
   function handleStart() {
@@ -239,7 +253,7 @@ function SearchModal({ campaign, onClose, onStarted }: { campaign: Campaign; onC
         <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '12px' }}>
           <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>ICP — búsqueda en lenguaje natural</p>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t2)', fontStyle: 'italic' }}>&ldquo;{campaign.icp_prompt}&rdquo;</p>
-          <p style={{ fontSize: '10px', color: 'var(--t3)', marginTop: '6px' }}>Claude genera 3 variantes de búsqueda automáticamente.</p>
+          <p style={{ fontSize: '10px', color: 'var(--t3)', marginTop: '6px' }}>Claude genera 3 variantes de búsqueda automáticamente según el ICP.</p>
         </div>
 
         {/* Radius */}
@@ -270,7 +284,7 @@ function SearchModal({ campaign, onClose, onStarted }: { campaign: Campaign; onC
             <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--t2)' }}>1–3 min</p>
           </div>
           <div style={{ flex: 1, fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
-            Trae todos los resultados del área. Leads ya contactados en los últimos 30 días se saltean automáticamente.
+            Trae todos los resultados del área filtrados por el ICP. Leads ya existentes se saltean automáticamente.
           </div>
         </div>
 
@@ -287,58 +301,24 @@ function SearchModal({ campaign, onClose, onStarted }: { campaign: Campaign; onC
   )
 }
 
-// ── Writer Modal ──────────────────────────────────────────────────────────────
-function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose, onStarted }: {
+// ── Writer Modal (signer select → fireWriter) ─────────────────────────────────
+function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose, onConfirm }: {
   campaign: Campaign
   eligibleCount: number
   currentUserEmail: string
   onClose: () => void
-  onStarted?: () => void
+  onConfirm: (email: string, max: number) => void
 }) {
-  const [signedByEmail, setSignedByEmail] = useState(currentUserEmail)
+  const defaultSigner = SIGNERS.some((s) => s.email === currentUserEmail) ? currentUserEmail : SIGNERS[0]!.email
+  const [signedByEmail, setSignedByEmail] = useState(defaultSigner)
   const [maxDrafts, setMaxDrafts] = useState(Math.min(eligibleCount, 50))
-
-  const SIGNERS = [
-    { email: 'franco.sanmartin@maniaco.online', name: 'Franco' },
-    { email: 'luis.giannasi@maniaco.online',    name: 'Lucho' },
-    { email: 'noelia.bottallo@maniaco.online',  name: 'Noe' },
-  ]
 
   const actualMax = Math.min(maxDrafts, eligibleCount)
   const estimatedCost = (actualMax * 0.004).toFixed(3)
 
-  async function handleGenerate() {
-    const id    = campaign.id
-    const email = signedByEmail
+  function handleGenerate() {
     onClose()
-    onStarted?.()
-    toast.loading(`Generando drafts... 0/${eligibleCount}`, { id: 'writer-bg' })
-
-    let totalCreated = 0
-    let remaining    = eligibleCount
-    const maxRounds  = Math.ceil(eligibleCount / 25) + 2  // safety limit
-
-    for (let round = 0; round < maxRounds && remaining > 0; round++) {
-      try {
-        const res = await fetch('/api/agents/writer', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ campaignId: id, signedByEmail: email, max: 25 }),
-        })
-        const json = await res.json() as { created?: number; skipped?: number; failed?: number; remaining?: number; error?: string }
-        if (json.error) { toast.error(json.error, { id: 'writer-bg' }); return }
-        totalCreated += json.created ?? 0
-        remaining    = json.remaining ?? 0
-        if ((json.created ?? 0) === 0) break  // sin progreso
-        toast.loading(`Generando... ${totalCreated}/${eligibleCount}`, { id: 'writer-bg' })
-      } catch {
-        toast.error('Error de red al generar drafts', { id: 'writer-bg' }); return
-      }
-    }
-
-    const msg = totalCreated > 0
-      ? `✓ ${totalCreated} draft${totalCreated !== 1 ? 's' : ''} generados — revisalos en Aprobación`
-      : 'Sin cambios — todos los leads elegibles ya tienen draft'
-    toast.success(msg, { id: 'writer-bg', duration: 6000 })
+    onConfirm(signedByEmail, actualMax)
   }
 
   return (
@@ -395,13 +375,13 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose, onSta
             <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--t1)' }}>~${estimatedCost}</p>
           </div>
           <div style={{ width: '100%', fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
-            Claude Sonnet · score ≥ 5/10 · omite leads con draft activo · corre en background.
+            Claude Sonnet · score ≥ 5/10 · omite leads con draft activo.
           </div>
         </div>
 
         {eligibleCount === 0 && (
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--warn)', textAlign: 'center' }}>
-            No hay leads enriquecidos con score ≥ 5. Enriquecé primero desde "Nueva búsqueda".
+          <p style={{ fontSize: 'var(--text-xs)', color: '#EAB308', textAlign: 'center' }}>
+            No hay leads enriquecidos con score ≥ 5. Enriquecé primero desde el paso ENRIQUECER.
           </p>
         )}
 
@@ -419,37 +399,7 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose, onSta
   )
 }
 
-// ── Tab: Resumen ──────────────────────────────────────────────────────────────
-function TabResumen({ campaign, leadCount }: { campaign: Campaign; leadCount: number }) {
-  const CHANNEL_LABELS    = { whatsapp: 'WhatsApp', email: 'Email', both: 'WhatsApp + Email' }
-  const STATUS_BADGE      = { draft: 'badge badge-warn', active: 'badge badge-acc', paused: 'badge badge-warn', closed: 'badge badge-ok' }
-  const STATUS_LABELS_CAM = { draft: 'Borrador', active: 'Activa', paused: 'Pausada', closed: 'Cerrada' }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '600px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-        {[
-          { label: 'Estado',     value: <span className={STATUS_BADGE[campaign.status]}>{STATUS_LABELS_CAM[campaign.status]}</span> },
-          { label: 'Canal',      value: CHANNEL_LABELS[campaign.channel] },
-          { label: 'Categoría',  value: campaign.category ?? 'Otras' },
-          { label: 'Leads',      value: <strong style={{ color: 'var(--acc)', fontSize: '1.3em' }}>{leadCount}</strong> },
-          { label: 'Creada',     value: new Date(campaign.created_at).toLocaleDateString('es-AR') },
-        ].map(({ label, value }) => (
-          <div key={label} style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '14px' }}>
-            <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>{label}</p>
-            <div style={{ fontSize: 'var(--text-base)', color: 'var(--t1)' }}>{value}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '16px' }}>
-        <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>ICP Prompt</p>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t2)', lineHeight: 1.6, fontStyle: 'italic' }}>&ldquo;{campaign.icp_prompt}&rdquo;</p>
-      </div>
-    </div>
-  )
-}
-
-// ── Pipeline Panel ────────────────────────────────────────────────────────────
+// ── Activity log job records ──────────────────────────────────────────────────
 interface JobRecord {
   id: string; type: string; status: string
   result: Record<string, unknown> | null
@@ -468,11 +418,10 @@ function timeAgo(iso: string): string {
 
 function jobSummary(job: JobRecord): string {
   const r = job.result ?? {}
-  if (job.type === 'scrape') {
-    const ins = Number(r.inserted ?? 0), req = Number(r.requests ?? 0), reused = Number(r.reusedFromCache ?? 0)
-    const parts = []
+  if (job.type === 'scrape' || job.type === 'scrape_enrich') {
+    const ins = Number(r.inserted ?? 0), req = Number(r.requests ?? 0)
+    const parts: string[] = []
     if (ins > 0) parts.push(`${ins} nuevos leads`)
-    if (reused > 0) parts.push(`${reused} reutilizados`)
     if (req > 0) parts.push(`${req} req SerpAPI`)
     return parts.join(' · ') || 'sin resultados'
   }
@@ -492,20 +441,35 @@ function jobSummary(job: JobRecord): string {
 }
 
 const JOB_CONFIG: Record<string, { label: string; color: string }> = {
-  scrape:       { label: 'Búsqueda',       color: 'var(--acc)' },
-  enrich:       { label: 'Enriquecimiento', color: '#06B6D4' },
-  scrape_enrich:{ label: 'Búsqueda + enriq.', color: '#06B6D4' },
-  write:        { label: 'Drafts',          color: '#22C55E' },
+  scrape:        { label: 'Búsqueda',          color: 'var(--acc)' },
+  enrich:        { label: 'Enriquecimiento',   color: COL_HAIKU },
+  scrape_enrich: { label: 'Búsqueda + enriq.', color: COL_HAIKU },
+  write:         { label: 'Drafts',            color: COL_APPROVED },
 }
 
+// ── Pipeline step type ────────────────────────────────────────────────────────
+interface PipelineStep {
+  n: number
+  name: string
+  count: number
+  sub: string
+  cost: string
+  color: string
+  pct: number
+  action?: { label: string; onClick: () => void; disabled?: boolean; running?: boolean; tooltip?: string }
+}
+
+// ── Pipeline Panel (5 steps) ──────────────────────────────────────────────────
 function PipelinePanel({
-  campaign, rows, rawCount, enrichedCount, writerEligible, draftCount,
-  runningAction, setRunningAction, setShowSearch, setShowWriter,
+  campaign, total, rawCount, enrichedCount, draftedCount, approvedCount, sentCount,
+  writerEligible, serpRequests, runningAction,
+  onSearch, onEnrich, onWriter, onGoApproval,
 }: {
-  campaign: Campaign; rows: CampaignLeadFull[]; rawCount: number; enrichedCount: number; writerEligible: number; draftCount: number
-  runningAction: 'search' | 'enrich' | 'write' | null
-  setRunningAction: (a: 'search' | 'enrich' | 'write' | null) => void
-  setShowSearch: (v: boolean) => void; setShowWriter: (v: boolean) => void
+  campaign: Campaign
+  total: number; rawCount: number; enrichedCount: number; draftedCount: number
+  approvedCount: number; sentCount: number; writerEligible: number; serpRequests: number
+  runningAction: RunningAction
+  onSearch: () => void; onEnrich: () => void; onWriter: () => void; onGoApproval: () => void
 }) {
   const supabase = createClient()
   const [jobs, setJobs] = useState<JobRecord[]>([])
@@ -513,294 +477,236 @@ function PipelinePanel({
   const loadJobs = useCallback(async () => {
     const { data } = await supabase
       .from('agent_jobs')
-      .select('id, type, status, result, created_at, started_at, finished_at')
+      .select('id, type, status, result, params, created_at, started_at, finished_at')
       .order('created_at', { ascending: false })
-      .limit(30)
-    const filtered = ((data ?? []) as JobRecord[]).filter((j) => {
+      .limit(40)
+    const filtered = ((data ?? []) as unknown as Array<JobRecord & { params?: Record<string, unknown> }>).filter((j) => {
       const r = j.result as Record<string, unknown> | null
-      const p = j as unknown as { params?: Record<string, unknown> }
-      return r?.campaignId === campaign.id || p.params?.campaignId === campaign.id
+      return r?.campaignId === campaign.id || j.params?.campaignId === campaign.id
     })
-    // fallback: show last 6 if no campaign filter matches
-    setJobs(filtered.slice(0, 6))
+    setJobs(filtered.slice(0, 5))
   }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadJobs() }, [loadJobs])
 
   useEffect(() => {
     const ch = supabase.channel(`pipeline-jobs-${campaign.id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'agent_jobs' }, () => { loadJobs(); setRunningAction(null) })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'agent_jobs' }, () => loadJobs())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agent_jobs' }, () => loadJobs())
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [campaign.id, loadJobs]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const total         = rows.length
-  const approvedCount = rows.filter((r) => ['approved', 'sent', 'replied'].includes(r.status)).length
+  const denom = Math.max(total, 1)
 
-  // Proportions for the funnel bar (capped at 1)
-  const pEnriched  = total > 0 ? Math.min(enrichedCount / total, 1) : 0
-  const pDraft     = total > 0 ? Math.min(draftCount / total, 1)    : 0
-  const pApproved  = total > 0 ? Math.min(approvedCount / total, 1) : 0
-
-  async function fireEnrich() {
-    if (rawCount === 0 || runningAction === 'enrich') return
-    setRunningAction('enrich')
-
-    let totalEnriched = 0
-    let pending = rawCount
-    toast.loading(`Enriqueciendo... 0/${rawCount}`, { id: 'enrich-bg' })
-
-    while (pending > 0) {
-      try {
-        const res = await fetch('/api/agents/enrich', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ campaignId: campaign.id, max: 30 }),
-        })
-        const j = await res.json() as { enriched?: number; failed?: number; remaining?: number; error?: string }
-        if (j.error) { toast.error(j.error, { id: 'enrich-bg' }); break }
-        totalEnriched += j.enriched ?? 0
-        pending = j.remaining ?? 0
-        if ((j.enriched ?? 0) === 0) break  // ningún progreso, detener
-        toast.loading(`Enriqueciendo... ${totalEnriched}/${rawCount}`, { id: 'enrich-bg' })
-      } catch {
-        toast.error('Error de red al enriquecer', { id: 'enrich-bg' }); break
-      }
-    }
-
-    toast.success(`✓ ${totalEnriched} leads enriquecidos`, { id: 'enrich-bg', duration: 4000 })
-    setRunningAction(null)
-  }
-
-  const stages = [
-    { key: 'total',    label: 'Total',        sub: `${rawCount} sin procesar`, count: total,         color: 'var(--t3)',  pct: 1 },
-    { key: 'enrich',   label: 'Enriquecidos', sub: `score calc. por Haiku`,    count: enrichedCount,  color: '#06B6D4',   pct: pEnriched },
-    { key: 'draft',    label: 'Con draft',    sub: `pendientes de aprobar`,     count: draftCount,     color: 'var(--acc)', pct: pDraft },
-    { key: 'approved', label: 'Aprobados',    sub: `listos para enviar`,        count: approvedCount,  color: '#22C55E',   pct: pApproved },
+  const steps: PipelineStep[] = [
+    {
+      n: 1, name: 'BUSCAR', count: total, sub: 'en base de datos',
+      cost: '~$0.002/req SerpAPI', color: 'var(--acc)', pct: 1,
+      action: { label: 'Buscar más →', onClick: onSearch, running: runningAction === 'search' },
+    },
+    {
+      n: 2, name: 'ENRIQUECER', count: enrichedCount, sub: 'score 0-10 + perfil',
+      cost: `~$${(rawCount * 0.001).toFixed(3)} Haiku`, color: COL_HAIKU, pct: enrichedCount / denom,
+      action: {
+        label: rawCount > 0 ? `Enriquecer (${rawCount})` : 'Al día',
+        onClick: onEnrich, disabled: rawCount === 0, running: runningAction === 'enrich',
+      },
+    },
+    {
+      n: 3, name: 'REDACTAR', count: draftedCount, sub: 'WA ≤300 chars',
+      cost: `~$${(writerEligible * 0.004).toFixed(3)} Sonnet`, color: COL_SONNET, pct: draftedCount / denom,
+      action: {
+        label: writerEligible > 0 ? `Generar (${writerEligible})` : 'Sin elegibles',
+        onClick: onWriter, disabled: writerEligible === 0, running: runningAction === 'write',
+      },
+    },
+    {
+      n: 4, name: 'APROBAR', count: approvedCount, sub: 'revisión manual',
+      cost: 'gratuito', color: COL_APPROVED, pct: approvedCount / denom,
+      action: { label: 'Ver cola →', onClick: onGoApproval },
+    },
+    {
+      n: 5, name: 'ENVIAR', count: sentCount, sub: 'Evolution API / Resend',
+      cost: '~$0.001/msg', color: '#22C55E', pct: sentCount / denom,
+      action: { label: 'Configurar →', onClick: () => {}, disabled: true, tooltip: 'Próximamente' },
+    },
   ]
 
-  const runningMap: Record<string, 'search' | 'enrich' | 'write'> = {
-    total: 'search', enrich: 'enrich', draft: 'write',
-  }
-
   return (
-    <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r12)', overflow: 'hidden' }}>
-      {/* ── Header ── */}
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Pipeline de outreach</span>
-          {runningAction && (
-            <span className="animate-pulse" style={{ marginLeft: '10px', fontSize: '11px', color: 'var(--acc)', fontWeight: 600 }}>
-              ● {runningAction === 'search' ? 'Buscando...' : runningAction === 'enrich' ? 'Enriqueciendo...' : 'Generando drafts...'}
-            </span>
-          )}
-        </div>
-        <button onClick={() => setShowSearch(true)} className="btn-primary"
-          style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: 'var(--text-xs)', padding: '6px 12px' }}>
-          <Search size={12} />Nueva búsqueda
-        </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <Workflow size={16} color="var(--acc)" />
+        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pipeline de outreach</span>
+        {runningAction && (
+          <span className="animate-pulse" style={{ fontSize: '11px', color: 'var(--acc)', fontWeight: 600 }}>
+            ● {runningAction === 'search' ? 'Buscando...' : runningAction === 'enrich' ? 'Enriqueciendo...' : 'Generando drafts...'}
+          </span>
+        )}
       </div>
 
-      {/* ── Funnel stages ── */}
-      <div style={{ padding: '20px', display: 'flex', alignItems: 'stretch', gap: '0' }}>
-        {stages.map((stage, i) => {
-          const stageRunning = runningAction === runningMap[stage.key]
-          const isLast = i === stages.length - 1
+      {/* 5 steps */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
+        {steps.map((step) => {
+          const isRunning = !!step.action?.running
+          const isDisabled = !!step.action?.disabled
           return (
-            <div key={stage.key} style={{ flex: 1, display: 'flex', alignItems: 'stretch' }}>
-              <div style={{
-                flex: 1,
-                background: stageRunning ? `${stage.color}12` : 'var(--s1)',
-                border: `1px solid ${stageRunning ? stage.color : 'var(--border)'}`,
-                borderRadius: 'var(--r8)',
-                padding: '16px 14px',
-                display: 'flex', flexDirection: 'column', gap: '6px',
-                position: 'relative', overflow: 'hidden',
-                transition: 'border-color 200ms, background 200ms',
-              }}>
-                {stageRunning && (
-                  <div className="animate-pulse" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: stage.color }} />
-                )}
-                {/* Progress fill bar */}
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'var(--border)' }}>
-                  <div style={{ height: '100%', width: `${stage.pct * 100}%`, background: stage.color, opacity: 0.6, transition: 'width 600ms ease' }} />
-                </div>
-
-                <span style={{ fontSize: '10px', fontWeight: 700, color: stageRunning ? stage.color : 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                  {stage.label}
-                </span>
-                <span style={{ fontSize: '28px', fontWeight: 800, color: stage.count > 0 ? stage.color : 'var(--t3)', fontFamily: 'var(--mono)', lineHeight: 1 }}>
-                  {stage.count}
-                </span>
-                <span style={{ fontSize: '10px', color: 'var(--t3)', lineHeight: 1.3, marginBottom: '4px' }}>{stage.sub}</span>
+            <div key={step.n} style={{
+              background: 'var(--s2)',
+              border: `1px solid ${isRunning ? step.color : 'var(--border)'}`,
+              borderRadius: 'var(--r12)', padding: '16px 14px',
+              display: 'flex', flexDirection: 'column', gap: '8px',
+              position: 'relative', overflow: 'hidden',
+              transition: 'border-color 200ms',
+            }}>
+              {isRunning && (
+                <div className="animate-pulse" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: step.color }} />
+              )}
+              {/* number + name */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <span style={{
+                  width: '20px', height: '20px', borderRadius: '999px', flexShrink: 0,
+                  background: `${step.color}1f`, color: step.color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '11px', fontWeight: 800, fontFamily: 'var(--mono)',
+                }}>{step.n}</span>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t2)', letterSpacing: '0.06em' }}>{step.name}</span>
               </div>
-              {!isLast && (
-                <div style={{ width: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ color: 'var(--t3)', fontSize: '16px' }}>→</span>
-                </div>
+
+              {/* count */}
+              <span style={{ fontSize: '30px', fontWeight: 800, fontFamily: 'var(--mono)', color: step.count > 0 ? step.color : 'var(--t3)', lineHeight: 1 }}>
+                {step.count}
+              </span>
+              <span style={{ fontSize: '10px', color: 'var(--t3)', lineHeight: 1.3 }}>{step.sub}</span>
+
+              {/* progress bar */}
+              <div style={{ height: '4px', borderRadius: '999px', background: 'var(--s3)', overflow: 'hidden', marginTop: '2px' }}>
+                <div style={{ height: '100%', width: `${Math.min(step.pct, 1) * 100}%`, background: step.color, opacity: 0.7, transition: 'width 600ms ease' }} />
+              </div>
+
+              {/* cost */}
+              <span style={{ fontSize: '9px', color: 'var(--t3)', fontFamily: 'var(--mono)' }}>{step.cost}</span>
+
+              {/* action */}
+              {step.action && (
+                <button
+                  onClick={step.action.onClick}
+                  disabled={isDisabled || isRunning}
+                  title={step.action.tooltip}
+                  className="btn-secondary"
+                  style={{
+                    marginTop: '2px', fontSize: '11px', padding: '6px 8px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                    width: '100%', cursor: (isDisabled || isRunning) ? 'not-allowed' : 'pointer',
+                    opacity: (isDisabled || isRunning) ? 0.45 : 1,
+                    borderColor: isRunning ? step.color : undefined,
+                  }}>
+                  {isRunning ? 'Corriendo...' : step.action.label}
+                </button>
               )}
             </div>
           )
         })}
       </div>
 
-      {/* ── Action buttons ── */}
-      <div style={{ padding: '0 20px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
-        {/* Buscar */}
-        <div />  {/* total stage has no action besides header button */}
-        {/* Enriquecer */}
-        <button
-          onClick={fireEnrich}
-          disabled={rawCount === 0 || runningAction === 'enrich'}
-          className="btn-secondary"
-          style={{ fontSize: 'var(--text-xs)', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center', opacity: (rawCount === 0 || runningAction === 'enrich') ? 0.4 : 1 }}>
-          <Zap size={12} color="#06B6D4" />
-          {runningAction === 'enrich' ? 'Corriendo...' : rawCount > 0 ? `Enriquecer (${rawCount})` : 'Al día'}
-        </button>
-        {/* Generar drafts */}
-        <button
-          onClick={() => { if (runningAction !== 'write') setShowWriter(true) }}
-          disabled={writerEligible === 0 || runningAction === 'write'}
-          className="btn-secondary"
-          style={{ fontSize: 'var(--text-xs)', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center', opacity: (writerEligible === 0 || runningAction === 'write') ? 0.4 : 1 }}>
-          <PenLine size={12} color="var(--acc)" />
-          {runningAction === 'write' ? 'Corriendo...' : writerEligible > 0 ? `Generar (${writerEligible})` : 'Sin elegibles'}
-        </button>
-        {/* Cola de aprobación */}
-        <a
-          href="/dashboard/marketing/approval"
-          style={{ fontSize: 'var(--text-xs)', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center', background: approvedCount === 0 ? 'transparent' : '#22C55E18', border: `1px solid ${approvedCount > 0 ? '#22C55E40' : 'var(--border)'}`, borderRadius: 'var(--r6)', color: approvedCount > 0 ? '#22C55E' : 'var(--t3)', textDecoration: 'none', fontWeight: 500, transition: 'all 150ms' }}>
-          {approvedCount > 0 ? '✓' : '○'} Cola {approvedCount > 0 ? `(${approvedCount})` : '→'}
-        </a>
+      {/* Activity log */}
+      <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r12)', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Actividad reciente</span>
+        {jobs.length === 0 ? (
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)' }}>Sin actividad todavía. Empezá con una búsqueda.</p>
+        ) : jobs.map((job) => {
+          const cfg = JOB_CONFIG[job.type] ?? { label: job.type, color: 'var(--t3)' }
+          const isRun = job.status === 'running' || job.status === 'queued'
+          const isFail = job.status === 'failed'
+          const summary = jobSummary(job)
+          return (
+            <div key={job.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px' }}>
+              <span style={{
+                width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                background: isRun ? `${cfg.color}30` : isFail ? '#EF444420' : `${cfg.color}20`,
+                border: `1px solid ${isRun ? cfg.color : isFail ? '#EF4444' : cfg.color}40`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px',
+              }}>
+                {isRun ? <span className="animate-pulse" style={{ color: cfg.color }}>●</span> : isFail ? '✗' : '✓'}
+              </span>
+              <span style={{ fontWeight: 600, color: isRun ? cfg.color : isFail ? '#EF4444' : 'var(--t2)', minWidth: '120px' }}>
+                {cfg.label}{isRun && <span style={{ color: cfg.color }}> · corriendo</span>}
+              </span>
+              <span style={{ color: 'var(--t3)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {isRun ? 'procesando en background...' : isFail ? (String((job.result as Record<string, unknown>)?.error ?? 'error').slice(0, 60)) : summary}
+              </span>
+              <span style={{ color: 'var(--t3)', flexShrink: 0, opacity: 0.7 }}>{timeAgo(job.created_at)}</span>
+            </div>
+          )
+        })}
+        {serpRequests > 0 && (
+          <p style={{ fontSize: '10px', color: 'var(--t3)', borderTop: '1px solid var(--border)', paddingTop: '8px', marginTop: '2px' }}>
+            {serpRequests} requests SerpAPI acumulados en esta campaña
+          </p>
+        )}
       </div>
-
-      {/* ── Activity log ── */}
-      {jobs.length > 0 && (
-        <div style={{ borderTop: '1px solid var(--border)', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Actividad reciente</span>
-          {jobs.slice(0, 5).map((job) => {
-            const cfg = JOB_CONFIG[job.type] ?? { label: job.type, color: 'var(--t3)' }
-            const isRun = job.status === 'running' || job.status === 'queued'
-            const isFail = job.status === 'failed'
-            const summary = jobSummary(job)
-            return (
-              <div key={job.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px' }}>
-                <span style={{
-                  width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
-                  background: isRun ? `${cfg.color}30` : isFail ? '#EF444420' : `${cfg.color}20`,
-                  border: `1px solid ${isRun ? cfg.color : isFail ? '#EF4444' : cfg.color}40`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '9px',
-                }}>
-                  {isRun ? <span className="animate-pulse" style={{ color: cfg.color }}>●</span> : isFail ? '✗' : '✓'}
-                </span>
-                <span style={{ fontWeight: 600, color: isRun ? cfg.color : isFail ? '#EF4444' : 'var(--t2)', minWidth: '110px' }}>
-                  {cfg.label}
-                  {isRun && <span style={{ color: cfg.color }}> · corriendo</span>}
-                </span>
-                <span style={{ color: 'var(--t3)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {isRun ? 'procesando en background...' : isFail ? (String((job.result as Record<string,unknown>)?.error ?? 'error').slice(0, 60)) : summary}
-                </span>
-                <span style={{ color: 'var(--t3)', flexShrink: 0, opacity: 0.7 }}>{timeAgo(job.created_at)}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }
 
-// ── Tab: Leads ────────────────────────────────────────────────────────────────
-type SortBy = 'fit_desc' | 'fit_asc' | 'created_desc' | 'name_asc'
+// ── Tab: Leads (search, filters, CSV export, draft badges) ────────────────────
+type SortBy = 'fit_desc' | 'fit_asc' | 'name_asc' | 'created_desc'
 
-function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentUserEmail: string }) {
-  const supabase = createClient()
-  const [rows, setRows] = useState<CampaignLeadFull[]>([])
-  const [loading, setLoading] = useState(true)
+function csvEscape(v: string | number | null | undefined): string {
+  const s = v === null || v === undefined ? '' : String(v)
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+function TabLeads({
+  campaign, rows, loading, draftMap, onReject, onSelect, onRefresh,
+}: {
+  campaign: Campaign
+  rows: CampaignLeadFull[]
+  loading: boolean
+  draftMap: Record<string, DraftStatus>
+  onReject: (row: CampaignLeadFull) => void
+  onSelect: (row: CampaignLeadFull) => void
+  onRefresh: () => void
+}) {
+  const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<LeadStatus | 'all'>('all')
   const [minScore, setMinScore] = useState(0)
   const [sortBy, setSortBy] = useState<SortBy>('fit_desc')
-  const [showSearch, setShowSearch] = useState(false)
-  const [showWriter, setShowWriter] = useState(false)
-  const [selectedRow, setSelectedRow] = useState<CampaignLeadFull | null>(null)
-  const [runningAction, setRunningAction] = useState<'search' | 'enrich' | 'write' | null>(null)
-  // draft status map: leadGlobalId → 'pending' | 'approved' | 'sent'
-  const [draftMap, setDraftMap] = useState<Record<string, DraftStatus>>({})
 
-  const loadLeads = useCallback(async () => {
-    setLoading(true)
-    const { data } = await supabase
-      .from('campaign_leads')
-      .select('status, added_at, leads_global(*)')
-      .eq('campaign_id', campaign.id)
-      .order('added_at', { ascending: false })
-      .limit(200)
-    setRows((data ?? []) as unknown as CampaignLeadFull[])
-    setLoading(false)
-    // Load draft statuses
-    const ids = (data ?? []).map((r: Record<string, unknown>) => (r.leads_global as Record<string,unknown>)?.id).filter(Boolean) as string[]
-    if (ids.length > 0) {
-      const { data: drafts } = await supabase
-        .from('drafts').select('lead_global_id, status')
-        .eq('campaign_id', campaign.id)
-        .in('lead_global_id', ids)
-        .in('status', ['pending', 'approved', 'sent'])
-      const map: Record<string, DraftStatus> = {}
-      const priority: Record<string, number> = { sent: 3, approved: 2, pending: 1 }
-      for (const d of drafts ?? []) {
-        const cur = map[d.lead_global_id]
-        if (!cur || (priority[d.status] ?? 0) > (priority[cur] ?? 0)) {
-          map[d.lead_global_id] = d.status as DraftStatus
-        }
-      }
-      setDraftMap(map)
-    }
-  }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { loadLeads() }, [loadLeads])
-
-  // Realtime for campaign_leads + leads_global changes
-  useEffect(() => {
-    const ch = supabase.channel(`cl-${campaign.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'campaign_leads', filter: `campaign_id=eq.${campaign.id}` }, () => loadLeads())
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'campaign_leads', filter: `campaign_id=eq.${campaign.id}` }, () => { loadLeads(); setRunningAction(null) })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads_global' }, () => { loadLeads(); setRunningAction((prev) => prev === 'enrich' ? null : prev) })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [campaign.id, loadLeads]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Realtime: watch agent_jobs to clear running state when jobs complete
-  useEffect(() => {
-    const ch2 = supabase.channel(`jobs-watch-${campaign.id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'agent_jobs' }, (payload) => {
-        const job = payload.new as { status: string }
-        if (job.status === 'done' || job.status === 'failed') setRunningAction(null)
+  const displayed = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return [...rows]
+      .filter((r) => filterStatus === 'all' || r.status === filterStatus)
+      .filter((r) => minScore === 0 || (r.leads_global.fit_score ?? 0) >= minScore)
+      .filter((r) => q === '' || r.leads_global.company.toLowerCase().includes(q))
+      .sort((a, b) => {
+        if (sortBy === 'fit_desc') return (b.leads_global.fit_score ?? -1) - (a.leads_global.fit_score ?? -1)
+        if (sortBy === 'fit_asc')  return (a.leads_global.fit_score ?? 11) - (b.leads_global.fit_score ?? 11)
+        if (sortBy === 'name_asc') return a.leads_global.company.localeCompare(b.leads_global.company, 'es')
+        return new Date(b.added_at).getTime() - new Date(a.added_at).getTime()
       })
-      .subscribe()
-    return () => { supabase.removeChannel(ch2) }
-  }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, search, filterStatus, minScore, sortBy])
 
-  // Auto-clear running state after 10min (fallback si Realtime falla)
-  useEffect(() => {
-    if (!runningAction) return
-    const t = setTimeout(() => setRunningAction(null), 10 * 60 * 1000)
-    return () => clearTimeout(t)
-  }, [runningAction])
-
-  const rawCount          = rows.filter((r) => r.status === 'raw').length
-  const enrichedCount     = rows.filter((r) => r.status === 'enriched').length
-  const writerEligible    = rows.filter((r) => r.status === 'enriched' && (r.leads_global.fit_score ?? 0) >= 5).length
-
-  const displayed = [...rows]
-    .filter((r) => filterStatus === 'all' || r.status === filterStatus)
-    .filter((r) => minScore === 0 || (r.leads_global.fit_score ?? 0) >= minScore)
-    .sort((a, b) => {
-      if (sortBy === 'fit_desc')  return (b.leads_global.fit_score ?? -1) - (a.leads_global.fit_score ?? -1)
-      if (sortBy === 'fit_asc')   return (a.leads_global.fit_score ?? 11) - (b.leads_global.fit_score ?? 11)
-      if (sortBy === 'name_asc')  return a.leads_global.company.localeCompare(b.leads_global.company, 'es')
-      return 0
-    })
+  function exportCSV() {
+    const header = ['company', 'city', 'phone', 'email', 'website', 'fit_score', 'status']
+    const lines = [header.join(',')]
+    for (const r of displayed) {
+      const l = r.leads_global
+      lines.push([
+        csvEscape(l.company), csvEscape(l.city), csvEscape(l.phone),
+        csvEscape(l.email), csvEscape(l.website), csvEscape(l.fit_score), csvEscape(r.status),
+      ].join(','))
+    }
+    const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${campaign.name.replace(/[^\w]+/g, '_').toLowerCase()}_leads.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success(`${displayed.length} leads exportados`)
+  }
 
   const STATUS_FILTER_OPTIONS: Array<{ value: LeadStatus | 'all'; label: string }> = [
     { value: 'all',      label: 'Todos' },
@@ -808,56 +714,21 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
     { value: 'enriched', label: 'Enriquecidos' },
     { value: 'approved', label: 'Aprobados' },
     { value: 'sent',     label: 'Enviados' },
-    { value: 'replied',  label: 'Respondieron' },
     { value: 'rejected', label: 'Rechazados' },
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {showSearch && <SearchModal campaign={campaign} onClose={() => setShowSearch(false)} onStarted={() => setRunningAction('search')} />}
-      {showWriter && (
-        <WriterModal
-          campaign={campaign}
-          eligibleCount={writerEligible}
-          currentUserEmail={currentUserEmail}
-          onClose={() => setShowWriter(false)}
-          onStarted={() => setRunningAction('write')}
-        />
-      )}
-      {selectedRow && (
-        <LeadDrawer
-          lead={selectedRow.leads_global}
-          status={selectedRow.status}
-          campaignId={campaign.id}
-          onClose={() => setSelectedRow(null)}
-        />
-      )}
-
-      <PipelinePanel
-        campaign={campaign}
-        rows={rows}
-        rawCount={rawCount}
-        enrichedCount={enrichedCount}
-        writerEligible={writerEligible}
-        draftCount={Object.keys(draftMap).length}
-        runningAction={runningAction}
-        setRunningAction={setRunningAction}
-        setShowSearch={setShowSearch}
-        setShowWriter={setShowWriter}
-      />
-
-      {/* ── Filtros y tabla ───────────────────────────────────────────────────── */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      {/* Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '180px' }}>
+          <Search size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--t3)' }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar empresa..."
+            className="input" style={{ height: '36px', fontSize: 'var(--text-xs)', paddingLeft: '30px', width: '100%' }} />
+        </div>
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as LeadStatus | 'all')}
-          className="input" style={{ height: '36px', fontSize: 'var(--text-xs)', width: 'auto', minWidth: '140px' }}>
+          className="input" style={{ height: '36px', fontSize: 'var(--text-xs)', width: 'auto', minWidth: '130px' }}>
           {STATUS_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}
-          className="input" style={{ height: '36px', fontSize: 'var(--text-xs)', width: 'auto', minWidth: '150px' }}>
-          <option value="fit_desc">Score ↓ mayor primero</option>
-          <option value="fit_asc">Score ↑ menor primero</option>
-          <option value="created_desc">Más reciente</option>
-          <option value="name_asc">Nombre A→Z</option>
         </select>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <label style={{ fontSize: '11px', color: 'var(--t3)', whiteSpace: 'nowrap' }}>Score ≥</label>
@@ -865,10 +736,21 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
             onChange={(e) => setMinScore(Math.min(10, Math.max(0, Number(e.target.value))))}
             className="input" style={{ height: '36px', width: '52px', fontSize: 'var(--text-xs)', textAlign: 'center' }} />
         </div>
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: '11px', color: 'var(--t3)' }}>{displayed.length}/{rows.length}</span>
-        <button onClick={loadLeads}
-          style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--r6)', cursor: 'pointer', color: 'var(--t3)', display: 'flex', alignItems: 'center', padding: '7px 10px', transition: 'color 120ms, border-color 120ms' }}
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}
+          className="input" style={{ height: '36px', fontSize: 'var(--text-xs)', width: 'auto', minWidth: '150px' }}>
+          <option value="fit_desc">Score ↓ mayor primero</option>
+          <option value="fit_asc">Score ↑ menor primero</option>
+          <option value="name_asc">Nombre A→Z</option>
+          <option value="created_desc">Más reciente</option>
+        </select>
+        <span style={{ fontSize: '11px', color: 'var(--t3)', fontFamily: 'var(--mono)' }}>{displayed.length}/{rows.length}</span>
+        <button onClick={exportCSV} disabled={displayed.length === 0}
+          className="btn-secondary"
+          style={{ height: '36px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px', padding: '0 10px', opacity: displayed.length === 0 ? 0.4 : 1 }}>
+          <Download size={12} />CSV
+        </button>
+        <button onClick={onRefresh}
+          style={{ height: '36px', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--r6)', cursor: 'pointer', color: 'var(--t3)', display: 'flex', alignItems: 'center', padding: '0 10px', transition: 'color 120ms, border-color 120ms' }}
           onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--t1)'; e.currentTarget.style.borderColor = 'var(--t2)' }}
           onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
           <RefreshCw size={12} />
@@ -884,28 +766,23 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
           <p style={{ fontWeight: 600, color: 'var(--t2)', fontSize: 'var(--text-sm)' }}>
             {rows.length === 0 ? 'Sin leads todavía' : 'Sin resultados para este filtro'}
           </p>
-          {rows.length === 0 && (
-            <button onClick={() => setShowSearch(true)} className="btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-xs)', marginTop: '4px' }}>
-              <Search size={13} />Nueva búsqueda
-            </button>
-          )}
         </div>
       ) : (
         <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r12)', overflow: 'hidden' }}>
-          {/* Header: Empresa | Ciudad | Website | Score | Estado | Acciones */}
+          {/* Header */}
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 95px 70px', padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--s3)' }}>
-            {['Empresa', 'Ciudad', 'Sitio web', 'Score', 'Estado', ''].map((h) => (
-              <span key={h} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
+            {['Empresa', 'Ciudad', 'Web / Tel', 'Score', 'Estado', ''].map((h, i) => (
+              <span key={i} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
             ))}
           </div>
-          <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+          <div style={{ maxHeight: '58vh', overflowY: 'auto' }}>
             {displayed.map((row, i) => {
               const lead = row.leads_global
               const enriched = lead.enriched_data as EnrichedData | null
+              const ds = draftMap[row.lead_global_id]
               return (
                 <div key={`${row.campaign_id}-${row.lead_global_id}`}
-                  onClick={() => setSelectedRow(row)}
+                  onClick={() => onSelect(row)}
                   style={{
                     display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 95px 70px',
                     padding: '10px 16px',
@@ -920,9 +797,7 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
                       <span style={{ fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                         {lead.company}
                       </span>
-                      {(() => {
-                        const ds = draftMap[row.lead_global_id]
-                        if (!ds) return null
+                      {ds && (() => {
                         const cfg = ds === 'sent' ? { label: '✉ Enviado', c: '#22C55E', bg: '#22C55E15' }
                                   : ds === 'approved' ? { label: '✓ Aprobado', c: '#A3E635', bg: '#A3E63515' }
                                   : { label: '✏ Draft', c: '#EAB308', bg: '#EAB30815' }
@@ -967,30 +842,18 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
                     {STATUS_LABELS[row.status]}
                   </span>
 
-                  {/* Row actions */}
                   <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => setSelectedRow(row)}
-                      title="Ver detalle"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: '12px', padding: '2px 4px', borderRadius: '4px', whiteSpace: 'nowrap' }}
+                    <button onClick={() => onSelect(row)} title="Ver detalle"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: '12px', padding: '2px 4px', borderRadius: '4px' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--acc)'; e.currentTarget.style.background = 'var(--acc-d)' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'none' }}
-                    >
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'none' }}>
                       👁
                     </button>
                     {row.status !== 'rejected' && (
-                      <button
-                        onClick={async () => {
-                          const supa = createClient()
-                          await supa.from('campaign_leads').update({ status: 'rejected' })
-                            .eq('campaign_id', row.campaign_id).eq('lead_global_id', row.lead_global_id)
-                          toast.success(`${lead.company} excluido`)
-                        }}
-                        title="Excluir de campaña"
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: '12px', padding: '2px 4px', borderRadius: '4px', whiteSpace: 'nowrap' }}
+                      <button onClick={() => onReject(row)} title="Excluir de campaña"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: '12px', padding: '2px 4px', borderRadius: '4px' }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.background = '#EF444410' }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'none' }}
-                      >
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'none' }}>
                         🚫
                       </button>
                     )}
@@ -1046,7 +909,7 @@ function TabApproval({ campaign, userEmail }: { campaign: Campaign; userEmail: s
           <CheckSquare size={32} color="var(--t3)" />
           <p style={{ fontWeight: 600, color: 'var(--t2)', fontSize: 'var(--text-md)' }}>Sin drafts pendientes</p>
           <p style={{ color: 'var(--t3)', fontSize: 'var(--text-sm)', textAlign: 'center', maxWidth: '340px' }}>
-            Generá drafts desde la pestaña Leads y volvé aquí para aprobarlos antes de enviar.
+            Generá drafts desde el paso REDACTAR del pipeline y volvé aquí para aprobarlos antes de enviar.
           </p>
         </div>
       ) : (
@@ -1056,24 +919,180 @@ function TabApproval({ campaign, userEmail }: { campaign: Campaign; userEmail: s
   )
 }
 
+// ── Tab: Analytics ────────────────────────────────────────────────────────────
+function FunnelBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0
+  const filled = Math.round((pct / 100) * 20)
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '130px 50px 1fr 50px', alignItems: 'center', gap: '12px', fontSize: 'var(--text-xs)' }}>
+      <span style={{ color: 'var(--t2)' }}>{label}</span>
+      <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--t1)', textAlign: 'right' }}>{value}</span>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <span style={{ fontFamily: 'var(--mono)', color, letterSpacing: '1px', fontSize: '13px', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          {'█'.repeat(filled)}<span style={{ color: 'var(--s3)' }}>{'░'.repeat(20 - filled)}</span>
+        </span>
+      </div>
+      <span style={{ fontFamily: 'var(--mono)', color: 'var(--t3)', textAlign: 'right' }}>{pct}%</span>
+    </div>
+  )
+}
+
+function TabAnalytics({ rows, draftedCount, serpRequests }: {
+  rows: CampaignLeadFull[]; draftedCount: number; serpRequests: number
+}) {
+  const total = rows.length
+  const enriched = rows.filter((r) => r.leads_global.enriched_at !== null || r.leads_global.fit_score !== null).length
+  const scoreGte5 = rows.filter((r) => (r.leads_global.fit_score ?? 0) >= 5).length
+  const approved = rows.filter((r) => ['approved', 'sent', 'replied'].includes(r.status)).length
+  const sent = rows.filter((r) => ['sent', 'replied'].includes(r.status)).length
+  const replied = rows.filter((r) => r.status === 'replied').length
+
+  // Score distribution
+  const buckets = [
+    { label: '0-2',  min: 0, max: 2 },
+    { label: '3-4',  min: 3, max: 4 },
+    { label: '5-6',  min: 5, max: 6 },
+    { label: '7-8',  min: 7, max: 8 },
+    { label: '9-10', min: 9, max: 10 },
+  ].map((b) => ({
+    ...b,
+    n: rows.filter((r) => {
+      const s = r.leads_global.fit_score
+      return s !== null && s !== undefined && s >= b.min && s <= b.max
+    }).length,
+  }))
+  const maxBucket = Math.max(1, ...buckets.map((b) => b.n))
+
+  // Costs
+  const serpCost = serpRequests * 0.002
+  const haikuCost = enriched * 0.001
+  const sonnetCost = draftedCount * 0.004
+  const totalCost = serpCost + haikuCost + sonnetCost
+
+  // Industry distribution
+  const industryMap = new Map<string, number>()
+  for (const r of rows) {
+    const ind = r.leads_global.industry?.trim()
+    if (ind) industryMap.set(ind, (industryMap.get(ind) ?? 0) + 1)
+  }
+  const industries = [...industryMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
+
+  const card = { background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r12)', padding: '18px 20px' } as const
+  const heading = { fontSize: '11px', fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: '14px' }
+
+  if (total === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '80px 20px' }}>
+        <BarChart3 size={32} color="var(--t3)" />
+        <p style={{ fontWeight: 600, color: 'var(--t2)', fontSize: 'var(--text-md)' }}>Sin datos todavía</p>
+        <p style={{ color: 'var(--t3)', fontSize: 'var(--text-sm)' }}>Buscá leads para ver el análisis de la campaña.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '760px' }}>
+      {/* Funnel */}
+      <div style={card}>
+        <p style={heading}>Funnel de conversión</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <FunnelBar label="Total leads"   value={total}     total={total} color="var(--acc)" />
+          <FunnelBar label="Enriquecidos"  value={enriched}  total={total} color={COL_HAIKU} />
+          <FunnelBar label="Score ≥ 5"     value={scoreGte5} total={total} color="#EAB308" />
+          <FunnelBar label="Con draft"     value={draftedCount} total={total} color="var(--acc)" />
+          <FunnelBar label="Aprobados"     value={approved}  total={total} color={COL_APPROVED} />
+          <FunnelBar label="Enviados"      value={sent}      total={total} color="#22C55E" />
+          <FunnelBar label="Respondieron"  value={replied}   total={total} color="#8B5CF6" />
+        </div>
+      </div>
+
+      {/* Score distribution */}
+      <div style={card}>
+        <p style={heading}>Distribución de scores</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {buckets.map((b) => (
+            <div key={b.label} style={{ display: 'grid', gridTemplateColumns: '50px 1fr 40px', alignItems: 'center', gap: '12px', fontSize: 'var(--text-xs)' }}>
+              <span style={{ color: 'var(--t2)', fontFamily: 'var(--mono)' }}>{b.label}</span>
+              <div style={{ height: '14px', borderRadius: '4px', background: 'var(--s3)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(b.n / maxBucket) * 100}%`, background: b.min >= 7 ? '#22C55E' : b.min >= 5 ? '#EAB308' : '#EF4444', opacity: 0.8, transition: 'width 600ms ease' }} />
+              </div>
+              <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--t1)', textAlign: 'right' }}>{b.n}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Costs */}
+      <div style={card}>
+        <p style={heading}>Costos estimados</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+          {[
+            { label: 'SerpAPI',  detail: `${serpRequests} requests`,    value: serpCost,   color: 'var(--acc)' },
+            { label: 'Haiku',    detail: `${enriched} enriquecidos`,    value: haikuCost,  color: COL_HAIKU },
+            { label: 'Sonnet',   detail: `${draftedCount} drafts`,      value: sonnetCost, color: COL_SONNET },
+            { label: 'Total',    detail: 'acumulado',                   value: totalCost,  color: '#22C55E' },
+          ].map((c) => (
+            <div key={c.label} style={{ background: 'var(--s1)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '12px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <DollarSign size={12} color={c.color} />
+                <span style={{ fontSize: '11px', color: 'var(--t3)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>{c.label}</span>
+              </div>
+              <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: '20px', color: c.color === '#22C55E' ? 'var(--t1)' : 'var(--t1)', lineHeight: 1 }}>
+                ${c.value.toFixed(3)}
+              </span>
+              <p style={{ fontSize: '10px', color: 'var(--t3)', marginTop: '4px' }}>{c.detail}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Categories */}
+      {industries.length > 0 && (
+        <div style={card}>
+          <p style={heading}>Categorías (industry)</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {industries.map(([ind, n]) => (
+              <div key={ind} style={{ display: 'grid', gridTemplateColumns: '1fr 60px', alignItems: 'center', gap: '12px', fontSize: 'var(--text-xs)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                  <span style={{ color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: '100px', flexShrink: 0 }}>{ind}</span>
+                  <div style={{ flex: 1, height: '8px', borderRadius: '999px', background: 'var(--s3)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${(n / total) * 100}%`, background: COL_HAIKU, opacity: 0.6, transition: 'width 600ms ease' }} />
+                  </div>
+                </div>
+                <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--t1)', textAlign: 'right' }}>{n}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Panel ────────────────────────────────────────────────────────────────
-type Tab = 'resumen' | 'leads' | 'aprovacion'
+type Tab = 'pipeline' | 'leads' | 'aprobacion' | 'analytics'
 
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'resumen',    label: 'Resumen',    icon: <BarChart3 size={14} /> },
-  { id: 'leads',      label: 'Leads',      icon: <Users size={14} /> },
-  { id: 'aprovacion', label: 'Aprobación', icon: <CheckSquare size={14} /> },
-]
-
-export function CampaignDetailPanel({ campaign, initialLeadCount }: {
+export function CampaignDetailPanel({ campaign }: {
   campaign: Campaign
   initialLeadCount: number
 }) {
-  const [activeTab, setActiveTab] = useState<Tab>('leads')
-  const [leadCount, setLeadCount] = useState(initialLeadCount)
-  const [pendingDrafts, setPendingDrafts] = useState(0)
-  const [currentUserEmail, setCurrentUserEmail] = useState<string>('franco.sanmartin@maniaco.online')
   const supabase = createClient()
+  const [activeTab, setActiveTab] = useState<Tab>('pipeline')
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>('franco.sanmartin@maniaco.online')
+
+  // Shared lead state (used by Pipeline + Leads + Analytics)
+  const [rows, setRows] = useState<CampaignLeadFull[]>([])
+  const [loading, setLoading] = useState(true)
+  const [draftMap, setDraftMap] = useState<Record<string, DraftStatus>>({})
+  const [pendingDrafts, setPendingDrafts] = useState(0)
+  const [serpRequests, setSerpRequests] = useState(0)
+  const [runningAction, setRunningAction] = useState<RunningAction>(null)
+
+  // Modals + drawer
+  const [showSearch, setShowSearch] = useState(false)
+  const [showWriter, setShowWriter] = useState(false)
+  const [selectedRow, setSelectedRow] = useState<CampaignLeadFull | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -1081,34 +1100,229 @@ export function CampaignDetailPanel({ campaign, initialLeadCount }: {
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll pending drafts count for badge
-  useEffect(() => {
-    async function loadPending() {
-      const { count } = await supabase.from('drafts').select('id', { count: 'exact', head: true })
-        .eq('campaign_id', campaign.id).eq('status', 'pending')
-      setPendingDrafts(count ?? 0)
+  // ── Load leads + draft statuses ──
+  const loadLeads = useCallback(async () => {
+    const { data } = await supabase
+      .from('campaign_leads')
+      .select('status, added_at, campaign_id, lead_global_id, leads_global(*)')
+      .eq('campaign_id', campaign.id)
+      .order('added_at', { ascending: false })
+      .limit(500)
+    const next = (data ?? []) as unknown as CampaignLeadFull[]
+    setRows(next)
+    setLoading(false)
+
+    const ids = next.map((r) => r.leads_global?.id).filter(Boolean) as string[]
+    if (ids.length > 0) {
+      const { data: drafts } = await supabase
+        .from('drafts').select('lead_global_id, status')
+        .eq('campaign_id', campaign.id)
+        .in('lead_global_id', ids)
+        .in('status', ['pending', 'approved', 'sent'])
+      const map: Record<string, DraftStatus> = {}
+      const priority: Record<string, number> = { sent: 3, approved: 2, pending: 1 }
+      for (const d of drafts ?? []) {
+        const cur = map[d.lead_global_id]
+        if (!cur || (priority[d.status] ?? 0) > (priority[cur] ?? 0)) {
+          map[d.lead_global_id] = d.status as DraftStatus
+        }
+      }
+      setDraftMap(map)
+    } else {
+      setDraftMap({})
     }
-    loadPending()
-    const ch = supabase.channel(`pending-count-${campaign.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'drafts' }, loadPending)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'drafts' }, loadPending)
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
   }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (activeTab === 'resumen') {
-      supabase.from('campaign_leads').select('lead_global_id', { count: 'exact', head: true }).eq('campaign_id', campaign.id)
-        .then(({ count }) => { if (count !== null) setLeadCount(count) })
+  useEffect(() => { loadLeads() }, [loadLeads])
+
+  // ── Pending drafts badge + serp requests ──
+  const loadMeta = useCallback(async () => {
+    const [{ count }, { data: jobs }] = await Promise.all([
+      supabase.from('drafts').select('id', { count: 'exact', head: true }).eq('campaign_id', campaign.id).eq('status', 'pending'),
+      supabase.from('agent_jobs').select('result, params, type').eq('type', 'scrape').limit(100),
+    ])
+    setPendingDrafts(count ?? 0)
+    let req = 0
+    for (const j of jobs ?? []) {
+      const r = j.result as Record<string, unknown> | null
+      const p = j.params as Record<string, unknown> | null
+      if (r?.campaignId === campaign.id || p?.campaignId === campaign.id) {
+        req += Number(r?.requests ?? 0)
+      }
     }
-  }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+    setSerpRequests(req)
+  }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { loadMeta() }, [loadMeta])
+
+  // ── Realtime ──
+  useEffect(() => {
+    const ch = supabase.channel(`detail-${campaign.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'campaign_leads', filter: `campaign_id=eq.${campaign.id}` }, () => loadLeads())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'campaign_leads', filter: `campaign_id=eq.${campaign.id}` }, () => loadLeads())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads_global' }, () => loadLeads())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'drafts' }, () => { loadLeads(); loadMeta() })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'drafts' }, () => { loadLeads(); loadMeta() })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'agent_jobs' }, (payload) => {
+        const job = payload.new as { status: string }
+        if (job.status === 'done' || job.status === 'failed') { setRunningAction((p) => p === 'search' ? null : p); loadMeta() }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [campaign.id, loadLeads, loadMeta]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-clear running state after 10min (fallback si Realtime falla)
+  useEffect(() => {
+    if (!runningAction) return
+    const t = setTimeout(() => setRunningAction(null), 10 * 60 * 1000)
+    return () => clearTimeout(t)
+  }, [runningAction])
+
+  // ── Derived counts ──
+  const total          = rows.length
+  const rawCount       = rows.filter((r) => r.status === 'raw').length
+  const enrichedCount  = rows.filter((r) => r.status === 'enriched').length
+  const draftedCount   = Object.keys(draftMap).length
+  const approvedCount  = rows.filter((r) => ['approved', 'sent', 'replied'].includes(r.status)).length
+  const sentCount      = rows.filter((r) => ['sent', 'replied'].includes(r.status)).length
+  const writerEligible = rows.filter((r) => r.status === 'enriched' && (r.leads_global.fit_score ?? 0) >= 5).length
+
+  // ── Enrich loop (Bug 2 fix: capture initialRaw before loop) ──
+  const fireEnrich = useCallback(async () => {
+    if (rawCount === 0 || runningAction === 'enrich') return
+    setRunningAction('enrich')
+    const initialRaw = rawCount
+    let totalEnriched = 0
+    let pending = initialRaw
+    toast.loading(`Enriqueciendo... 0/${initialRaw}`, { id: 'enrich-bg' })
+    while (pending > 0) {
+      try {
+        const res = await fetch('/api/agents/enrich', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ campaignId: campaign.id, max: 30 }),
+        })
+        const j = await res.json() as { enriched?: number; remaining?: number; error?: string }
+        if (j.error) { toast.error(j.error, { id: 'enrich-bg' }); break }
+        totalEnriched += j.enriched ?? 0
+        pending = j.remaining ?? 0
+        if ((j.enriched ?? 0) === 0) break
+        toast.loading(`Enriqueciendo... ${totalEnriched}/${initialRaw}`, { id: 'enrich-bg' })
+      } catch {
+        toast.error('Error de red al enriquecer', { id: 'enrich-bg' }); break
+      }
+    }
+    toast.success(`✓ ${totalEnriched} leads enriquecidos`, { id: 'enrich-bg', duration: 4000 })
+    setRunningAction(null)
+    loadLeads()
+  }, [rawCount, runningAction, campaign.id, loadLeads])
+
+  // ── Writer loop (no denominator) ──
+  const fireWriter = useCallback(async (email: string, max: number) => {
+    if (runningAction === 'write') return
+    setRunningAction('write')
+    let totalCreated = 0
+    let remaining = max
+    toast.loading('Generando drafts...', { id: 'writer-bg' })
+    for (let round = 0; round < 10 && remaining > 0; round++) {
+      try {
+        const res = await fetch('/api/agents/writer', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ campaignId: campaign.id, signedByEmail: email, max: 25 }),
+        })
+        const j = await res.json() as { created?: number; remaining?: number; error?: string }
+        if (j.error || !res.ok) { toast.error(j.error ?? 'Error', { id: 'writer-bg' }); break }
+        totalCreated += j.created ?? 0
+        remaining = j.remaining ?? 0
+        if ((j.created ?? 0) === 0) break
+        toast.loading(`Generando... ${totalCreated} drafts creados`, { id: 'writer-bg' })
+      } catch {
+        toast.error('Error de red al generar drafts', { id: 'writer-bg' }); break
+      }
+    }
+    toast.success(totalCreated > 0 ? `✓ ${totalCreated} drafts generados → revisalos en Aprobación` : 'Sin nuevos drafts', { id: 'writer-bg', duration: 5000 })
+    setRunningAction(null)
+    loadLeads()
+    loadMeta()
+  }, [runningAction, campaign.id, loadLeads, loadMeta])
+
+  async function handleReject(row: CampaignLeadFull) {
+    await supabase.from('campaign_leads').update({ status: 'rejected' })
+      .eq('campaign_id', row.campaign_id).eq('lead_global_id', row.lead_global_id)
+    toast.success(`${row.leads_global.company} excluido`)
+    loadLeads()
+  }
+
+  async function handleDeleteCampaign() {
+    const { error } = await supabase.from('campaigns').delete().eq('id', campaign.id)
+    if (error) { toast.error('Error al eliminar campaña'); return }
+    toast.success('Campaña eliminada')
+    window.location.href = '/dashboard/marketing/campaigns'
+  }
+
+  const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
+    { id: 'pipeline',   label: 'Pipeline',   icon: <Workflow size={14} /> },
+    { id: 'leads',      label: `Leads${total > 0 ? ` (${total})` : ''}`, icon: <Users size={14} /> },
+    { id: 'aprobacion', label: 'Aprobación', icon: <CheckSquare size={14} />, badge: pendingDrafts },
+    { id: 'analytics',  label: 'Analytics',  icon: <BarChart3 size={14} /> },
+  ]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-      <div style={{ display: 'flex', gap: '2px', padding: '0 28px', borderBottom: '1px solid var(--border)', background: 'var(--s1)', overflowX: 'auto' }}>
+      {/* Modals + drawer */}
+      {showSearch && <SearchModal campaign={campaign} onClose={() => setShowSearch(false)} onStarted={() => setRunningAction('search')} />}
+      {showWriter && (
+        <WriterModal
+          campaign={campaign}
+          eligibleCount={writerEligible}
+          currentUserEmail={currentUserEmail}
+          onClose={() => setShowWriter(false)}
+          onConfirm={fireWriter}
+        />
+      )}
+      {selectedRow && (
+        <LeadDrawer
+          lead={selectedRow.leads_global}
+          status={selectedRow.status}
+          campaignId={campaign.id}
+          onClose={() => setSelectedRow(null)}
+        />
+      )}
+
+      {/* Panel header with delete */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 28px 0', background: 'var(--s1)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+          <h2 style={{ fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaign.name}</h2>
+          <span style={{ fontSize: '11px', color: 'var(--t3)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '340px' }}>
+            {campaign.icp_prompt}
+          </span>
+        </div>
+        {confirmDelete ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <span style={{ fontSize: '11px', color: '#EF4444', fontWeight: 500 }}>¿Eliminar campaña?</span>
+            <button onClick={handleDeleteCampaign}
+              style={{ fontSize: '11px', fontWeight: 700, color: '#EF4444', background: '#EF444415', border: '1px solid #EF444440', borderRadius: 'var(--r6)', padding: '4px 10px', cursor: 'pointer' }}>
+              Eliminar
+            </button>
+            <button onClick={() => setConfirmDelete(false)}
+              style={{ fontSize: '11px', color: 'var(--t3)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--r6)', padding: '4px 10px', cursor: 'pointer' }}>
+              Cancelar
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmDelete(true)} title="Eliminar campaña"
+            style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, fontSize: '11px', color: 'var(--t3)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--r6)', padding: '6px 10px', cursor: 'pointer', transition: 'color 120ms, border-color 120ms' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.borderColor = '#EF444440' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+            <Trash2 size={13} />Eliminar
+          </button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '2px', padding: '8px 28px 0', borderBottom: '1px solid var(--border)', background: 'var(--s1)', overflowX: 'auto' }}>
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id
-          const badge = tab.id === 'aprovacion' && pendingDrafts > 0 ? pendingDrafts : null
+          const showBadge = tab.id === 'aprobacion' && (tab.badge ?? 0) > 0
           return (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
               display: 'flex', alignItems: 'center', gap: '6px', padding: '12px 14px',
@@ -1116,25 +1330,51 @@ export function CampaignDetailPanel({ campaign, initialLeadCount }: {
               color: isActive ? 'var(--acc)' : 'var(--t3)',
               background: 'none', border: 'none',
               borderBottom: isActive ? '2px solid var(--acc)' : '2px solid transparent',
-              cursor: 'pointer', whiteSpace: 'nowrap', transition: 'color 120ms',
-              position: 'relative',
+              cursor: 'pointer', whiteSpace: 'nowrap', transition: 'color 120ms', position: 'relative',
             }}
             onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--t2)' }}
             onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--t3)' }}>
               {tab.icon}{tab.label}
-              {badge && (
+              {showBadge && (
                 <span style={{ background: '#22C55E', color: '#000', fontSize: '10px', fontWeight: 700, borderRadius: '999px', padding: '1px 6px', lineHeight: 1.5, minWidth: '18px', textAlign: 'center' }}>
-                  {badge}
+                  {tab.badge}
                 </span>
               )}
             </button>
           )
         })}
       </div>
-      <div style={{ padding: activeTab === 'aprovacion' ? '0' : '24px 28px', flex: 1, overflowY: activeTab === 'aprovacion' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column' }}>
-        {activeTab === 'resumen'    && <TabResumen campaign={campaign} leadCount={leadCount} />}
-        {activeTab === 'leads'      && <TabLeads   campaign={campaign} currentUserEmail={currentUserEmail} />}
-        {activeTab === 'aprovacion' && <TabApproval campaign={campaign} userEmail={currentUserEmail} />}
+
+      {/* Content */}
+      <div style={{ padding: activeTab === 'aprobacion' ? '0' : '20px 28px', flex: 1, overflowY: activeTab === 'aprobacion' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column' }}>
+        {activeTab === 'pipeline' && (
+          <PipelinePanel
+            campaign={campaign}
+            total={total} rawCount={rawCount} enrichedCount={enrichedCount}
+            draftedCount={draftedCount} approvedCount={approvedCount} sentCount={sentCount}
+            writerEligible={writerEligible} serpRequests={serpRequests}
+            runningAction={runningAction}
+            onSearch={() => setShowSearch(true)}
+            onEnrich={fireEnrich}
+            onWriter={() => { if (runningAction !== 'write') setShowWriter(true) }}
+            onGoApproval={() => setActiveTab('aprobacion')}
+          />
+        )}
+        {activeTab === 'leads' && (
+          <TabLeads
+            campaign={campaign}
+            rows={rows}
+            loading={loading}
+            draftMap={draftMap}
+            onReject={handleReject}
+            onSelect={(r) => setSelectedRow(r)}
+            onRefresh={loadLeads}
+          />
+        )}
+        {activeTab === 'aprobacion' && <TabApproval campaign={campaign} userEmail={currentUserEmail} />}
+        {activeTab === 'analytics' && (
+          <TabAnalytics rows={rows} draftedCount={draftedCount} serpRequests={serpRequests} />
+        )}
       </div>
     </div>
   )
