@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Megaphone, Plus, X, MessageCircle, Mail, Layers, ChevronRight, Clock, CheckSquare } from 'lucide-react'
+import { Megaphone, Plus, X, MessageCircle, Mail, Layers, ChevronRight, Clock, CheckSquare, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { Campaign, CampaignChannel, CampaignStatus } from '@/lib/types'
@@ -222,21 +222,24 @@ function NewCampaignModal({ ownerEmail, onClose, onCreated }: {
 }
 
 // ── Campaign Card ─────────────────────────────────────────────────────────────
-function CampaignCard({ campaign, onClick }: { campaign: Campaign; onClick: () => void }) {
+function CampaignCard({ campaign, onClick, onDelete }: {
+  campaign: Campaign; onClick: () => void; onDelete: () => void
+}) {
   const [hovered, setHovered] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const badge = STATUS_CONFIG[campaign.status]
 
   return (
     <div
-      onClick={onClick}
+      onClick={() => { if (!confirming) onClick() }}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseLeave={() => { setHovered(false); setConfirming(false) }}
       style={{
-        background: 'var(--s2)',
-        border: `1px solid ${hovered ? 'var(--acc)' : 'var(--border)'}`,
+        background: confirming ? '#EF444408' : 'var(--s2)',
+        border: `1px solid ${confirming ? '#EF444440' : hovered ? 'var(--acc)' : 'var(--border)'}`,
         borderRadius: 'var(--r12)', padding: '18px 20px',
-        cursor: 'pointer',
-        transition: 'border-color var(--t-normal), box-shadow var(--t-normal)',
+        cursor: confirming ? 'default' : 'pointer',
+        transition: 'border-color var(--t-normal), box-shadow var(--t-normal), background 150ms',
         boxShadow: hovered ? 'var(--shadow-md)' : 'var(--shadow-sm)',
         display: 'flex', alignItems: 'center', gap: '14px',
       }}
@@ -258,20 +261,51 @@ function CampaignCard({ campaign, onClick }: { campaign: Campaign; onClick: () =
           </h3>
           <span className={badge.className} style={{ flexShrink: 0, fontSize: '10px' }}>{badge.label}</span>
         </div>
-        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {campaign.icp_prompt}
-        </p>
+        {confirming ? (
+          <p style={{ fontSize: 'var(--text-xs)', color: '#EF4444', fontWeight: 500 }}>
+            ¿Eliminar campaña? Borra leads y drafts asociados.
+          </p>
+        ) : (
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {campaign.icp_prompt}
+          </p>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px' }}>
           <Clock size={11} color="var(--t3)" />
           <span style={{ fontSize: '11px', color: 'var(--t3)' }}>{formatRelativeTime(campaign.updated_at)}</span>
         </div>
       </div>
 
-      <ChevronRight
-        size={16}
-        color={hovered ? 'var(--acc)' : 'var(--t3)'}
-        style={{ transition: 'color var(--t-normal)', flexShrink: 0 }}
-      />
+      {/* Actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+        {confirming ? (
+          <>
+            <button onClick={onDelete}
+              style={{ fontSize: '11px', fontWeight: 700, color: '#EF4444', background: '#EF444415', border: '1px solid #EF444440', borderRadius: 'var(--r6)', padding: '4px 10px', cursor: 'pointer' }}>
+              Eliminar
+            </button>
+            <button onClick={() => setConfirming(false)}
+              style={{ fontSize: '11px', color: 'var(--t3)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--r6)', padding: '4px 10px', cursor: 'pointer' }}>
+              Cancelar
+            </button>
+          </>
+        ) : (
+          <>
+            {hovered && (
+              <button
+                onClick={() => setConfirming(true)}
+                title="Eliminar campaña"
+                style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: 'var(--r6)', display: 'flex', alignItems: 'center', transition: 'color 120ms' }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#EF4444')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--t3)')}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+            <ChevronRight size={16} color={hovered ? 'var(--acc)' : 'var(--t3)'} style={{ transition: 'color var(--t-normal)' }} />
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -280,10 +314,22 @@ function CampaignCard({ campaign, onClick }: { campaign: Campaign; onClick: () =
 export function CampaignsPanel({ campaigns, ownerEmail }: { campaigns: Campaign[]; ownerEmail: string }) {
   const router = useRouter()
   const [showModal, setShowModal] = useState(false)
+  const [localCampaigns, setLocalCampaigns] = useState(campaigns)
+  const supabase = createClient()
 
   function handleCreated(id: string) {
     setShowModal(false)
     router.push(`/dashboard/marketing/campaigns/${id}`)
+  }
+
+  async function handleDelete(campaignId: string) {
+    const { error } = await supabase.from('campaigns').delete().eq('id', campaignId)
+    if (error) {
+      toast.error('Error al eliminar campaña')
+    } else {
+      setLocalCampaigns((prev) => prev.filter((c) => c.id !== campaignId))
+      toast.success('Campaña eliminada')
+    }
   }
 
   return (
@@ -345,11 +391,12 @@ export function CampaignsPanel({ campaigns, ownerEmail }: { campaigns: Campaign[
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {campaigns.map((c) => (
+          {localCampaigns.map((c) => (
             <CampaignCard
               key={c.id}
               campaign={c}
               onClick={() => router.push(`/dashboard/marketing/campaigns/${c.id}`)}
+              onDelete={() => handleDelete(c.id)}
             />
           ))}
         </div>

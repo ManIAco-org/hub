@@ -81,7 +81,7 @@ export function MarketingOverview({ campaigns, kpis }: { campaigns: Campaign[]; 
   const activeCampaigns = campaigns.filter((c) => c.status === 'active' || c.status === 'draft')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1100px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1100px', minWidth: 0, overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
@@ -111,7 +111,7 @@ export function MarketingOverview({ campaigns, kpis }: { campaigns: Campaign[]; 
       </div>
 
       {/* Charts row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr minmax(0, 340px)', gap: '16px', minWidth: 0 }}>
         {/* Funnel */}
         <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r12)', padding: '20px' }}>
           <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--t1)', marginBottom: '16px' }}>Funnel de conversión</h3>

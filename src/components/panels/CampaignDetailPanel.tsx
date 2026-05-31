@@ -5,9 +5,10 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import {
   BarChart3, Users, Search, Globe, Phone, Mail,
-  ExternalLink, RefreshCw, X, Loader2, MapPin, Star, PenLine, Zap,
+  ExternalLink, RefreshCw, X, Loader2, MapPin, Star, PenLine, Zap, CheckSquare,
 } from 'lucide-react'
-import type { Campaign, CampaignLeadFull, LeadGlobal, LeadStatus, EnrichedData } from '@/lib/types'
+import type { Campaign, CampaignLeadFull, LeadGlobal, LeadStatus, EnrichedData, DraftStatus } from '@/lib/types'
+import { DraftApprovalQueue } from '@/components/panels/DraftApprovalQueue'
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 const STATUS_COLORS: Record<LeadStatus, string> = {
@@ -939,12 +940,64 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
   )
 }
 
+// ── Tab: Aprobación ───────────────────────────────────────────────────────────
+function TabApproval({ campaign, userEmail }: { campaign: Campaign; userEmail: string }) {
+  const supabase = createClient()
+  const [drafts, setDrafts] = useState<Parameters<typeof DraftApprovalQueue>[0]['initialDrafts']>([])
+  const [loading, setLoading] = useState(true)
+  const [pendingCount, setPendingCount] = useState(0)
+
+  const loadDrafts = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('drafts')
+      .select('id, body, subject, channel, status, signed_by_email, campaign_id, lead_global_id, created_at, leads_global(id, company, city, website, phone, fit_score, enriched_data)')
+      .eq('campaign_id', campaign.id)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(200)
+    const rows = (data ?? []) as unknown as Parameters<typeof DraftApprovalQueue>[0]['initialDrafts']
+    setDrafts(rows)
+    setPendingCount(rows.length)
+    setLoading(false)
+  }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { loadDrafts() }, [loadDrafts])
+
+  useEffect(() => {
+    const ch = supabase.channel(`drafts-tab-${campaign.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'drafts' }, loadDrafts)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'drafts' }, loadDrafts)
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [campaign.id, loadDrafts]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--t3)', fontSize: 'var(--text-sm)' }}>Cargando drafts...</div>
+
+  return (
+    <div style={{ margin: '-24px -28px' }}>
+      {pendingCount === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '80px 20px' }}>
+          <CheckSquare size={32} color="var(--t3)" />
+          <p style={{ fontWeight: 600, color: 'var(--t2)', fontSize: 'var(--text-md)' }}>Sin drafts pendientes</p>
+          <p style={{ color: 'var(--t3)', fontSize: 'var(--text-sm)', textAlign: 'center', maxWidth: '340px' }}>
+            Generá drafts desde la pestaña Leads y volvé aquí para aprobarlos antes de enviar.
+          </p>
+        </div>
+      ) : (
+        <DraftApprovalQueue initialDrafts={drafts} userEmail={userEmail} />
+      )}
+    </div>
+  )
+}
+
 // ── Main Panel ────────────────────────────────────────────────────────────────
-type Tab = 'resumen' | 'leads'
+type Tab = 'resumen' | 'leads' | 'aprovacion'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'resumen', label: 'Resumen', icon: <BarChart3 size={14} /> },
-  { id: 'leads',   label: 'Leads',   icon: <Users size={14} /> },
+  { id: 'resumen',    label: 'Resumen',    icon: <BarChart3 size={14} /> },
+  { id: 'leads',      label: 'Leads',      icon: <Users size={14} /> },
+  { id: 'aprovacion', label: 'Aprobación', icon: <CheckSquare size={14} /> },
 ]
 
 export function CampaignDetailPanel({ campaign, initialLeadCount }: {
@@ -953,6 +1006,7 @@ export function CampaignDetailPanel({ campaign, initialLeadCount }: {
 }) {
   const [activeTab, setActiveTab] = useState<Tab>('leads')
   const [leadCount, setLeadCount] = useState(initialLeadCount)
+  const [pendingDrafts, setPendingDrafts] = useState(0)
   const [currentUserEmail, setCurrentUserEmail] = useState<string>('franco.sanmartin@maniaco.online')
   const supabase = createClient()
 
@@ -961,6 +1015,21 @@ export function CampaignDetailPanel({ campaign, initialLeadCount }: {
       if (data.user?.email) setCurrentUserEmail(data.user.email)
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll pending drafts count for badge
+  useEffect(() => {
+    async function loadPending() {
+      const { count } = await supabase.from('drafts').select('id', { count: 'exact', head: true })
+        .eq('campaign_id', campaign.id).eq('status', 'pending')
+      setPendingDrafts(count ?? 0)
+    }
+    loadPending()
+    const ch = supabase.channel(`pending-count-${campaign.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'drafts' }, loadPending)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'drafts' }, loadPending)
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeTab === 'resumen') {
@@ -974,6 +1043,7 @@ export function CampaignDetailPanel({ campaign, initialLeadCount }: {
       <div style={{ display: 'flex', gap: '2px', padding: '0 28px', borderBottom: '1px solid var(--border)', background: 'var(--s1)', overflowX: 'auto' }}>
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id
+          const badge = tab.id === 'aprovacion' && pendingDrafts > 0 ? pendingDrafts : null
           return (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
               display: 'flex', alignItems: 'center', gap: '6px', padding: '12px 14px',
@@ -982,17 +1052,24 @@ export function CampaignDetailPanel({ campaign, initialLeadCount }: {
               background: 'none', border: 'none',
               borderBottom: isActive ? '2px solid var(--acc)' : '2px solid transparent',
               cursor: 'pointer', whiteSpace: 'nowrap', transition: 'color 120ms',
+              position: 'relative',
             }}
             onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--t2)' }}
             onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--t3)' }}>
               {tab.icon}{tab.label}
+              {badge && (
+                <span style={{ background: '#22C55E', color: '#000', fontSize: '10px', fontWeight: 700, borderRadius: '999px', padding: '1px 6px', lineHeight: 1.5, minWidth: '18px', textAlign: 'center' }}>
+                  {badge}
+                </span>
+              )}
             </button>
           )
         })}
       </div>
-      <div style={{ padding: '24px 28px', flex: 1, overflowY: 'auto' }}>
-        {activeTab === 'resumen' && <TabResumen campaign={campaign} leadCount={leadCount} />}
-        {activeTab === 'leads'   && <TabLeads   campaign={campaign} currentUserEmail={currentUserEmail} />}
+      <div style={{ padding: activeTab === 'aprovacion' ? '0' : '24px 28px', flex: 1, overflowY: 'auto' }}>
+        {activeTab === 'resumen'    && <TabResumen campaign={campaign} leadCount={leadCount} />}
+        {activeTab === 'leads'      && <TabLeads   campaign={campaign} currentUserEmail={currentUserEmail} />}
+        {activeTab === 'aprovacion' && <TabApproval campaign={campaign} userEmail={currentUserEmail} />}
       </div>
     </div>
   )
