@@ -161,7 +161,7 @@ export async function enrichLeads(opts: EnrichLeadsOptions): Promise<EnrichLeads
         .eq('id', lead.id)
     }
 
-    if (leads.indexOf(lead) < leads.length - 1) await sleep(200)
+    if (leads.indexOf(lead) < leads.length - 1) await sleep(100)
   }
 
   return { enriched, failed, total: leads.length, errors: errors.slice(0, 5) }

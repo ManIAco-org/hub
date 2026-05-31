@@ -19,7 +19,7 @@ export type ScrapeResult = ScrapeSuccess | ScrapeError
  */
 export async function fetchWebsiteContent(
   rawUrl: string,
-  timeoutMs = 8000,
+  timeoutMs = 3000,
 ): Promise<ScrapeResult> {
   // Normalise URL
   let url: string

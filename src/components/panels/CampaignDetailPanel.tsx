@@ -319,16 +319,9 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose, onSta
       body: JSON.stringify({ campaignId: id, signedByEmail: email, max }),
     })
       .then(r => r.json())
-      .then((json: { created?: number; skipped?: number; failed?: number; error?: string }) => {
-        if (json.error) {
-          toast.error(json.error, { id: 'writer-bg' })
-        } else {
-          const parts = []
-          if (json.created) parts.push(`${json.created} nuevo${json.created !== 1 ? 's' : ''}`)
-          if (json.skipped) parts.push(`${json.skipped} ya tenían`)
-          if (json.failed)  parts.push(`${json.failed} error`)
-          toast.success(`Drafts listos: ${parts.join(', ') || 'sin cambios'}`, { id: 'writer-bg', duration: 5000 })
-        }
+      .then((json: { job_id?: string; error?: string }) => {
+        if (json.error) toast.error(json.error, { id: 'writer-bg' })
+        else toast.success('Drafts en cola — se generan en background y aparecen en la cola de aprobación', { id: 'writer-bg', duration: 6000 })
       })
       .catch(() => toast.error('Error de red al generar drafts', { id: 'writer-bg' }))
   }
@@ -491,6 +484,13 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
     return () => { supabase.removeChannel(ch2) }
   }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-clear running state after 10min (fallback si Realtime falla)
+  useEffect(() => {
+    if (!runningAction) return
+    const t = setTimeout(() => setRunningAction(null), 10 * 60 * 1000)
+    return () => clearTimeout(t)
+  }, [runningAction])
+
   const rawCount          = rows.filter((r) => r.status === 'raw').length
   const enrichedCount     = rows.filter((r) => r.status === 'enriched').length
   const writerEligible    = rows.filter((r) => r.status === 'enriched' && (r.leads_global.fit_score ?? 0) >= 5).length
@@ -537,10 +537,6 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
       )}
 
       {/* ── 3 Action cards ───────────────────────────────────────────────────── */}
-      <style>{`
-        @keyframes pulse-bar { 0%,100%{opacity:0.4} 50%{opacity:1} }
-        .running-bar { animation: pulse-bar 1.4s ease-in-out infinite; }
-      `}</style>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
 
         {/* Card 1: Buscar */}
@@ -548,7 +544,7 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
           const isRunning = runningAction === 'search'
           return (
             <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? 'var(--acc)' : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
-              {isRunning && <div className="running-bar" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'var(--acc)' }} />}
+              {isRunning && <div className="animate-pulse" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'var(--acc)' }} />}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Search size={13} color="var(--acc)" />
@@ -578,7 +574,7 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
           const estCost = (rawCount * 0.001).toFixed(3)
           return (
             <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? '#22C55E' : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
-              {isRunning && <div className="running-bar" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: '#22C55E' }} />}
+              {isRunning && <div className="animate-pulse" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: '#22C55E' }} />}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Zap size={13} color="#22C55E" />
@@ -626,7 +622,7 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
           const estCost = (writerEligible * 0.004).toFixed(3)
           return (
             <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? 'var(--acc)' : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
-              {isRunning && <div className="running-bar" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'var(--acc)' }} />}
+              {isRunning && <div className="animate-pulse" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'var(--acc)' }} />}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <PenLine size={13} color="var(--acc)" />
