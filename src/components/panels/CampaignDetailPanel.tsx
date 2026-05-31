@@ -307,24 +307,38 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose, onSta
   const actualMax = Math.min(maxDrafts, eligibleCount)
   const estimatedCost = (actualMax * 0.004).toFixed(3)
 
-  function handleGenerate() {
-    const id = campaign.id
+  async function handleGenerate() {
+    const id    = campaign.id
     const email = signedByEmail
-    const max = actualMax
     onClose()
     onStarted?.()
-    toast.loading(`Generando ${max} draft${max !== 1 ? 's' : ''} en background...`, { id: 'writer-bg' })
-    fetch('/api/agents/writer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaignId: id, signedByEmail: email, max }),
-    })
-      .then(r => r.json())
-      .then((json: { job_id?: string; error?: string }) => {
-        if (json.error) toast.error(json.error, { id: 'writer-bg' })
-        else toast.success('Drafts en cola — se generan en background y aparecen en la cola de aprobación', { id: 'writer-bg', duration: 6000 })
-      })
-      .catch(() => toast.error('Error de red al generar drafts', { id: 'writer-bg' }))
+    toast.loading(`Generando drafts... 0/${eligibleCount}`, { id: 'writer-bg' })
+
+    let totalCreated = 0
+    let remaining    = eligibleCount
+    const maxRounds  = Math.ceil(eligibleCount / 25) + 2  // safety limit
+
+    for (let round = 0; round < maxRounds && remaining > 0; round++) {
+      try {
+        const res = await fetch('/api/agents/writer', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ campaignId: id, signedByEmail: email, max: 25 }),
+        })
+        const json = await res.json() as { created?: number; skipped?: number; failed?: number; remaining?: number; error?: string }
+        if (json.error) { toast.error(json.error, { id: 'writer-bg' }); return }
+        totalCreated += json.created ?? 0
+        remaining    = json.remaining ?? 0
+        if ((json.created ?? 0) === 0) break  // sin progreso
+        toast.loading(`Generando... ${totalCreated}/${eligibleCount}`, { id: 'writer-bg' })
+      } catch {
+        toast.error('Error de red al generar drafts', { id: 'writer-bg' }); return
+      }
+    }
+
+    const msg = totalCreated > 0
+      ? `✓ ${totalCreated} draft${totalCreated !== 1 ? 's' : ''} generados — revisalos en Aprobación`
+      : 'Sin cambios — todos los leads elegibles ya tienen draft'
+    toast.success(msg, { id: 'writer-bg', duration: 6000 })
   }
 
   return (
@@ -529,17 +543,33 @@ function PipelinePanel({
   const pDraft     = total > 0 ? Math.min(writerEligible / total, 1) : 0
   const pApproved  = total > 0 ? Math.min(approvedCount / total, 1)  : 0
 
-  function fireEnrich() {
+  async function fireEnrich() {
     if (rawCount === 0 || runningAction === 'enrich') return
     setRunningAction('enrich')
-    toast.loading(`Enriqueciendo ${rawCount} leads...`, { id: 'enrich-bg' })
-    fetch('/api/agents/enrich', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: campaign.id, max: 100 }) })
-      .then(r => r.json())
-      .then((j: { job_id?: string; error?: string }) => {
-        if (j.error) { toast.error(j.error, { id: 'enrich-bg' }); setRunningAction(null) }
-        else toast.success('Enriquecimiento corriendo en background', { id: 'enrich-bg', duration: 5000 })
-      })
-      .catch(() => { toast.error('Error de red', { id: 'enrich-bg' }); setRunningAction(null) })
+
+    let totalEnriched = 0
+    let pending = rawCount
+    toast.loading(`Enriqueciendo... 0/${rawCount}`, { id: 'enrich-bg' })
+
+    while (pending > 0) {
+      try {
+        const res = await fetch('/api/agents/enrich', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ campaignId: campaign.id, max: 30 }),
+        })
+        const j = await res.json() as { enriched?: number; failed?: number; remaining?: number; error?: string }
+        if (j.error) { toast.error(j.error, { id: 'enrich-bg' }); break }
+        totalEnriched += j.enriched ?? 0
+        pending = j.remaining ?? 0
+        if ((j.enriched ?? 0) === 0) break  // ningún progreso, detener
+        toast.loading(`Enriqueciendo... ${totalEnriched}/${rawCount}`, { id: 'enrich-bg' })
+      } catch {
+        toast.error('Error de red al enriquecer', { id: 'enrich-bg' }); break
+      }
+    }
+
+    toast.success(`✓ ${totalEnriched} leads enriquecidos`, { id: 'enrich-bg', duration: 4000 })
+    setRunningAction(null)
   }
 
   const stages = [

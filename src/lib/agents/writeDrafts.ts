@@ -89,108 +89,87 @@ REGLAS ABSOLUTAS — violación = draft descartado:
   return msg.content[0]?.type === 'text' ? msg.content[0].text.trim() : ''
 }
 
+export interface WriteDraftsResult {
+  created:   number
+  skipped:   number
+  failed:    number
+  remaining: number   // leads elegibles que quedan sin draft activo
+  errors:    string[]
+}
+
 export async function writeDrafts(opts: WriteDraftsOptions): Promise<WriteDraftsResult> {
-  const { supabase, campaignId, icpPrompt, channel, signedByEmail, max = 20, leadIds } = opts
+  const { supabase, campaignId, icpPrompt, channel, signedByEmail, max = 25, leadIds } = opts
 
   const apiKey = process.env.ANTHROPIC_API_KEY_AGENTS
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY_AGENTS no configurada')
 
-  const client = new Anthropic({ apiKey })
-  const signerName = signerNameFromEmail(signedByEmail)
-  const effectiveChannel: 'whatsapp' | 'email' = channel === 'email' ? 'email' : 'whatsapp'
+  const client  = new Anthropic({ apiKey })
+  const signer  = signerNameFromEmail(signedByEmail)
+  const chan: 'whatsapp' | 'email' = channel === 'email' ? 'email' : 'whatsapp'
 
-  // Step 1: get enriched lead IDs for this campaign
-  let clQuery = supabase
-    .from('campaign_leads')
-    .select('lead_global_id')
+  // ── 1. Enriched leads para esta campaña ───────────────────────────
+  let q = supabase
+    .from('campaign_leads').select('lead_global_id')
+    .eq('campaign_id', campaignId).eq('status', 'enriched')
+  if (leadIds && leadIds.length > 0) q = q.in('lead_global_id', leadIds)
+  const { data: clRows } = await q
+  const enrichedIds = clRows?.map((r) => r.lead_global_id) ?? []
+  if (enrichedIds.length === 0) return { created: 0, skipped: 0, failed: 0, remaining: 0, errors: [] }
+
+  // ── 2. Leads con score ≥ 5 ────────────────────────────────────────
+  const { data: allEligible } = await supabase
+    .from('leads_global').select('id, company, city, website, enriched_data, fit_score')
+    .in('id', enrichedIds).gte('fit_score', 5)
+  if (!allEligible || allEligible.length === 0) return { created: 0, skipped: 0, failed: 0, remaining: 0, errors: [] }
+
+  // ── 3. Leads que YA tienen draft activo (excluir) ────────────────
+  const { data: existingDrafts } = await supabase
+    .from('drafts').select('lead_global_id')
     .eq('campaign_id', campaignId)
-    .eq('status', 'enriched')
-    .limit(max)
+    .in('lead_global_id', allEligible.map(l => l.id))
+    .in('status', ['pending', 'approved', 'sent'])
+  const alreadyDrafted = new Set(existingDrafts?.map(d => d.lead_global_id) ?? [])
 
-  if (leadIds && leadIds.length > 0) {
-    clQuery = clQuery.in('lead_global_id', leadIds)
-  }
+  const fresh = (allEligible as LeadRow[]).filter(l => !alreadyDrafted.has(l.id))
+  const batch = fresh.slice(0, max)
+  const remaining = fresh.length - batch.length  // pending after this batch
 
-  const { data: clRows } = await clQuery
-  const ids = clRows?.map((r) => r.lead_global_id) ?? []
-  if (ids.length === 0) return { created: 0, skipped: 0, failed: 0, errors: [] }
+  if (batch.length === 0) return { created: 0, skipped: alreadyDrafted.size, failed: 0, remaining: 0, errors: [] }
 
-  // Step 2: get global leads with fit_score >= 5
-  const { data: leads } = await supabase
-    .from('leads_global')
-    .select('id, company, city, website, enriched_data, fit_score')
-    .in('id', ids)
-    .gte('fit_score', 5)
-
-  if (!leads || leads.length === 0) return { created: 0, skipped: 0, failed: 0, errors: [] }
-
-  let created = 0, skipped = 0, failed = 0
+  // ── 4. Generar drafts para el batch ──────────────────────────────
+  let created = 0, failed = 0
   const errors: string[] = []
 
-  for (const lead of leads as LeadRow[]) {
+  for (const lead of batch) {
     try {
-      // Dedup: skip only if lead already has an approved or sent draft (in pipeline)
-      // Pending drafts can be regenerated
-      const { data: existing } = await supabase
-        .from('drafts')
-        .select('id')
-        .eq('lead_global_id', lead.id)
-        .eq('campaign_id', campaignId)
-        .in('status', ['approved', 'sent'])
-        .maybeSingle()
+      let body = await generateDraft(client, signer, lead, chan, icpPrompt)
 
-      if (existing) {
-        skipped++
-        continue
-      }
-
-      // Generate
-      let body = await generateDraft(client, signerName, lead, effectiveChannel, icpPrompt)
-
-      // Auto-regenerate once if pricing slipped through
       if (containsPricing(body)) {
-        body = await generateDraft(client, signerName, lead, effectiveChannel, icpPrompt)
+        body = await generateDraft(client, signer, lead, chan, icpPrompt)
         if (containsPricing(body)) {
           failed++
-          errors.push(`${lead.company}: pricing detectado tras regenerar`)
+          errors.push(`${lead.company}: pricing tras regenerar`)
           continue
         }
       }
 
-      // Enforce WA char limit (hard cap)
-      if (effectiveChannel === 'whatsapp' && body.length > 300) {
-        body = body.slice(0, 297) + '...'
-      }
+      if (chan === 'whatsapp' && body.length > 300) body = body.slice(0, 297) + '...'
 
       const draftHash = createHash('sha256').update(`${lead.id}${body}`).digest('hex')
-
       const { error: insertErr } = await supabase.from('drafts').insert({
-        lead_global_id:  lead.id,
-        campaign_id:     campaignId,
-        channel:         effectiveChannel,
-        body,
-        language:        'es',
-        signed_by_email: signedByEmail,
-        draft_hash:      draftHash,
-        status:          'pending',
+        lead_global_id: lead.id, campaign_id: campaignId, channel: chan,
+        body, language: 'es', signed_by_email: signedByEmail,
+        draft_hash: draftHash, status: 'pending',
       })
 
-      if (insertErr) {
-        // Unique constraint violation = hash collision → already exists, count as skipped
-        if (insertErr.code === '23505') {
-          skipped++
-        } else {
-          throw insertErr
-        }
-      } else {
-        created++
-      }
+      if (!insertErr) created++
+      else if (insertErr.code === '23505') { /* hash collision raro, skip */ }
+      else throw insertErr
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
       failed++
-      errors.push(`${lead.company}: ${msg.slice(0, 80)}`)
+      errors.push(`${lead.company}: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`)
     }
   }
 
-  return { created, skipped, failed, errors: errors.slice(0, 5) }
+  return { created, skipped: alreadyDrafted.size, failed, remaining, errors: errors.slice(0, 5) }
 }

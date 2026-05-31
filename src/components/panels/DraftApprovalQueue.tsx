@@ -111,14 +111,22 @@ export function DraftApprovalQueue({
     setLoading(true)
     const body       = bodyOverride ?? (isEditing ? editBody : current.body)
     const editedDiff = body !== current.body ? body : null
-    const { error } = await supabase.from('drafts').update({
-      status:      'approved',
-      approved_by: userEmail,
-      approved_at: new Date().toISOString(),
-      ...(editedDiff ? { body, edited_diff: editedDiff } : {}),
-    }).eq('id', current.id)
+
+    const [draftRes] = await Promise.all([
+      supabase.from('drafts').update({
+        status:      'approved',
+        approved_by: userEmail,
+        approved_at: new Date().toISOString(),
+        ...(editedDiff ? { body, edited_diff: editedDiff } : {}),
+      }).eq('id', current.id),
+      // Sync campaign_leads so the pipeline shows the correct count
+      supabase.from('campaign_leads').update({ status: 'approved' })
+        .eq('campaign_id', current.campaign_id)
+        .eq('lead_global_id', current.lead_global_id),
+    ])
+
     setLoading(false)
-    if (error) { toast.error('Error al aprobar'); return }
+    if (draftRes.error) { toast.error('Error al aprobar'); return }
     toast.success(`✓ ${current.leads_global?.company ?? 'Lead'} aprobado`, { duration: 1200 })
     pop()
   }, [current, loading, isEditing, editBody, userEmail, supabase, pop])
@@ -127,6 +135,7 @@ export function DraftApprovalQueue({
     if (!current || loading) return
     setLoading(true)
     const { error } = await supabase.from('drafts').update({ status: 'rejected' }).eq('id', current.id)
+    // Note: campaign_leads stays 'enriched' on reject so lead can be redrafted
     setLoading(false)
     if (error) { toast.error('Error al rechazar'); return }
     toast(`✗ ${current.leads_global?.company ?? 'Lead'} rechazado`, { duration: 1200 })
@@ -162,12 +171,25 @@ export function DraftApprovalQueue({
   async function batchApprove() {
     if (selected.size === 0 || loading) return
     setLoading(true)
+
+    // Get the selected drafts info for campaign_leads update
+    const selectedDrafts = queue.filter((d) => selected.has(d.id))
+
     const res = await fetch('/api/drafts/batch-approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ draftIds: Array.from(selected) }),
     })
     const json = await res.json() as { approved?: number; error?: string }
+
+    if (!json.error && (json.approved ?? 0) > 0) {
+      // Sync campaign_leads for all approved drafts
+      await Promise.all(selectedDrafts.map((d) =>
+        supabase.from('campaign_leads').update({ status: 'approved' })
+          .eq('campaign_id', d.campaign_id).eq('lead_global_id', d.lead_global_id)
+      ))
+    }
+
     setLoading(false)
     if (json.error) { toast.error(json.error); return }
     const n = json.approved ?? 0
