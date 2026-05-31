@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import {
   BarChart3, Users, Search, Globe, Phone, Mail,
-  ExternalLink, RefreshCw, X, Loader2, MapPin, Star, PenLine,
+  ExternalLink, RefreshCw, X, Loader2, MapPin, Star, PenLine, Zap,
 } from 'lucide-react'
 import type { Campaign, CampaignLeadFull, LeadGlobal, LeadStatus, EnrichedData } from '@/lib/types'
 
@@ -195,23 +195,27 @@ function LeadDrawer({ lead, status, campaignId, onClose }: {
 
 // ── Nueva Búsqueda Modal (scrape + enrich integrado) ──────────────────────────
 function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) {
-  const [count, setCount] = useState(20)
-  const [requireWebsite, setRequireWebsite] = useState(true)
-  const [autoEnrich, setAutoEnrich] = useState(true)
+  const [radiusKm, setRadiusKm] = useState(5)
 
-  const reqsEst = Math.ceil(count / 20)
-  const serpCost = (reqsEst * 0.01).toFixed(2)
-  const enrichCost = autoEnrich ? (count * 0.001).toFixed(3) : '0.000'
+  const RADIUS_OPTIONS = [
+    { km: 2,  label: '2 km — muy céntrico',      est: '30-80 resultados' },
+    { km: 5,  label: '5 km — barrios cercanos',   est: '80-200 resultados' },
+    { km: 10, label: '10 km — toda la ciudad',    est: '150-400 resultados' },
+    { km: 20, label: '20 km — área metropolitana', est: '300-500+ resultados' },
+  ]
 
   function handleStart() {
-    const body = JSON.stringify({ campaignId: campaign.id, count, requireWebsite, autoEnrich })
     onClose()
     toast.loading('Buscando leads en background...', { id: 'search-bg' })
-    fetch('/api/agents/campaigns/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+    fetch('/api/agents/campaigns/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaignId: campaign.id, radiusKm }),
+    })
       .then(r => r.json())
       .then((json: { job_id?: string; error?: string }) => {
         if (json.error) toast.error(json.error, { id: 'search-bg' })
-        else toast.success('Búsqueda corriendo — te avisamos cuando termine', { id: 'search-bg', duration: 5000 })
+        else toast.success('Búsqueda corriendo en background — te avisamos cuando termine', { id: 'search-bg', duration: 5000 })
       })
       .catch(() => toast.error('Error de red al buscar leads', { id: 'search-bg' }))
   }
@@ -231,64 +235,40 @@ function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () =>
 
         {/* ICP preview */}
         <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '12px' }}>
-          <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>ICP</p>
+          <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>ICP — búsqueda en lenguaje natural</p>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t2)', fontStyle: 'italic' }}>&ldquo;{campaign.icp_prompt}&rdquo;</p>
+          <p style={{ fontSize: '10px', color: 'var(--t3)', marginTop: '6px' }}>Claude genera 3 variantes de búsqueda automáticamente.</p>
         </div>
 
-        {/* Count */}
+        {/* Radius */}
         <div>
-          <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>Cantidad de leads</label>
-          <select value={count} onChange={(e) => setCount(Number(e.target.value))} className="input" style={{ height: '38px' }}>
-            {[10, 20, 30, 50, 100].map((n) => <option key={n} value={n}>{n} leads</option>)}
-          </select>
-          {count > 20
-            ? <p style={{ fontSize: '11px', color: 'var(--warn)', marginTop: '4px' }}>⚡ {reqsEst} requests SerpAPI (~${serpCost})</p>
-            : <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '4px' }}>1 request SerpAPI (~$0.01)</p>
-          }
+          <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '6px' }}>Radio de búsqueda</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {RADIUS_OPTIONS.map((opt) => (
+              <label key={opt.km} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '8px 10px', borderRadius: 'var(--r6)', background: radiusKm === opt.km ? 'var(--acc-d)' : 'var(--s2)', border: `1px solid ${radiusKm === opt.km ? 'var(--acc-b)' : 'var(--border)'}`, transition: 'all 100ms' }}>
+                <input type="radio" name="radius" checked={radiusKm === opt.km} onChange={() => setRadiusKm(opt.km)}
+                  style={{ accentColor: 'var(--acc)' }} />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t1)' }}>{opt.label}</span>
+                </div>
+                <span style={{ fontSize: '10px', color: 'var(--t3)', fontFamily: 'var(--mono)' }}>{opt.est}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
-        {/* Options */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
-            <input type="checkbox" checked={requireWebsite} onChange={(e) => setRequireWebsite(e.target.checked)}
-              style={{ width: '16px', height: '16px', accentColor: 'var(--acc)', marginTop: '1px' }} />
-            <div>
-              <p style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t1)' }}>Solo leads con sitio web <span style={{ color: 'var(--t3)', fontWeight: 400 }}>(recomendado)</span></p>
-              <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '1px' }}>Mejor calidad para enriquecimiento y outreach personalizado.</p>
-            </div>
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
-            <input type="checkbox" checked={autoEnrich} onChange={(e) => setAutoEnrich(e.target.checked)}
-              style={{ width: '16px', height: '16px', accentColor: '#22C55E', marginTop: '1px' }} />
-            <div>
-              <p style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t1)' }}>
-                <span style={{ fontSize: '14px', marginRight: '4px' }}>🧠</span>
-                Enriquecer automáticamente <span style={{ color: 'var(--t3)', fontWeight: 400 }}>(recomendado)</span>
-              </p>
-              <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '1px' }}>
-                Claude Haiku extrae contacto, bio y fit score. ~${enrichCost} adicional.
-              </p>
-            </div>
-          </label>
-        </div>
-
-        {/* Cost summary */}
+        {/* Info */}
         <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '10px 12px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
           <div>
-            <p style={{ fontSize: '10px', color: 'var(--t3)' }}>Costo total estimado</p>
-            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--t1)' }}>
-              ~${(parseFloat(serpCost) + parseFloat(enrichCost)).toFixed(3)}
-            </p>
+            <p style={{ fontSize: '10px', color: 'var(--t3)' }}>Costo estimado</p>
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--t1)' }}>~$0.03–0.15</p>
           </div>
           <div>
             <p style={{ fontSize: '10px', color: 'var(--t3)' }}>Tiempo estimado</p>
-            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--t2)' }}>
-              {count <= 10 ? '~1 min' : count <= 20 ? '~2 min' : '~3-5 min'}
-            </p>
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--t2)' }}>1–3 min</p>
           </div>
           <div style={{ flex: 1, fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
-            Corre en background — podés navegar libremente.
+            Trae todos los resultados del área. Leads ya contactados en los últimos 30 días se saltean automáticamente.
           </div>
         </div>
 
@@ -540,7 +520,85 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
         />
       )}
 
-      {/* Controls */}
+      {/* ── 3 Action cards ───────────────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+        {/* Card 1: Buscar */}
+        <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Search size={13} color="var(--acc)" />
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Buscar</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
+            <span style={{ fontSize: '22px', fontWeight: 700, color: 'var(--t1)', fontFamily: 'var(--mono)' }}>{rows.length}</span>
+            <span style={{ fontSize: '11px', color: 'var(--t3)' }}>leads en BD</span>
+          </div>
+          <p style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4, minHeight: '28px' }}>
+            {rawCount > 0 ? `${rawCount} sin procesar` : rows.length === 0 ? 'Sin leads todavía' : 'Todos procesados'}
+          </p>
+          <button onClick={() => setShowSearch(true)} className="btn-primary"
+            style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
+            <Search size={12} />Buscar más
+          </button>
+        </div>
+
+        {/* Card 2: Enriquecer */}
+        <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Zap size={13} color="#22C55E" />
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Enriquecer</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
+            <span style={{ fontSize: '22px', fontWeight: 700, color: rawCount > 0 ? '#22C55E' : 'var(--t3)', fontFamily: 'var(--mono)' }}>{rawCount}</span>
+            <span style={{ fontSize: '11px', color: 'var(--t3)' }}>sin enriquecer</span>
+          </div>
+          <p style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4, minHeight: '28px' }}>
+            {enrichedCount > 0 ? `${enrichedCount} ya enriquecidos` : 'Claude Haiku · score + bio'}
+          </p>
+          <button
+            onClick={() => {
+              if (rawCount === 0) return
+              toast.loading(`Enriqueciendo ${rawCount} leads...`, { id: 'enrich-bg' })
+              fetch('/api/agents/enrich', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ campaignId: campaign.id, max: 100 }),
+              })
+                .then(r => r.json())
+                .then((j: { job_id?: string; error?: string }) => {
+                  if (j.error) toast.error(j.error, { id: 'enrich-bg' })
+                  else toast.success('Enriquecimiento corriendo en background', { id: 'enrich-bg', duration: 5000 })
+                })
+                .catch(() => toast.error('Error de red', { id: 'enrich-bg' }))
+            }}
+            disabled={rawCount === 0}
+            className={rawCount > 0 ? 'btn-secondary' : 'btn-secondary'}
+            style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center', opacity: rawCount === 0 ? 0.4 : 1 }}>
+            <Zap size={12} />{rawCount > 0 ? `Enriquecer (${rawCount})` : 'Sin pendientes'}
+          </button>
+        </div>
+
+        {/* Card 3: Drafts */}
+        <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <PenLine size={13} color="var(--acc)" />
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Drafts</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
+            <span style={{ fontSize: '22px', fontWeight: 700, color: writerEligible > 0 ? 'var(--acc)' : 'var(--t3)', fontFamily: 'var(--mono)' }}>{writerEligible}</span>
+            <span style={{ fontSize: '11px', color: 'var(--t3)' }}>listos (score ≥ 5)</span>
+          </div>
+          <p style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4, minHeight: '28px' }}>
+            Claude Sonnet · {campaign.channel === 'email' ? 'email personalizado' : 'WhatsApp ≤300 chars'}
+          </p>
+          <button onClick={() => setShowWriter(true)} disabled={writerEligible === 0}
+            className="btn-secondary"
+            style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center', opacity: writerEligible === 0 ? 0.4 : 1, position: 'relative' }}>
+            <PenLine size={12} />{writerEligible > 0 ? `Generar (${writerEligible})` : 'Sin elegibles'}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Filtros y tabla ───────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as LeadStatus | 'all')}
           className="input" style={{ height: '36px', fontSize: 'var(--text-xs)', width: 'auto', minWidth: '140px' }}>
@@ -560,38 +618,14 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
             className="input" style={{ height: '36px', width: '52px', fontSize: 'var(--text-xs)', textAlign: 'center' }} />
         </div>
         <div style={{ flex: 1 }} />
+        <span style={{ fontSize: '11px', color: 'var(--t3)' }}>{displayed.length}/{rows.length}</span>
         <button onClick={loadLeads}
           style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--r6)', cursor: 'pointer', color: 'var(--t3)', display: 'flex', alignItems: 'center', padding: '7px 10px', transition: 'color 120ms, border-color 120ms' }}
           onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--t1)'; e.currentTarget.style.borderColor = 'var(--t2)' }}
           onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
           <RefreshCw size={12} />
         </button>
-        <button onClick={() => setShowSearch(true)} className="btn-primary"
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', padding: '8px 16px' }}>
-          <Search size={14} />
-          Nueva búsqueda
-        </button>
-        <button onClick={() => setShowWriter(true)} className="btn-secondary"
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', padding: '8px 16px', position: 'relative' }}>
-          <PenLine size={14} />
-          Generar drafts
-          {writerEligible > 0 && (
-            <span style={{ position: 'absolute', top: '-6px', right: '-6px', background: 'var(--acc)', color: '#000', fontSize: '10px', fontWeight: 700, borderRadius: '999px', padding: '1px 5px', lineHeight: 1.4 }}>
-              {writerEligible}
-            </span>
-          )}
-        </button>
       </div>
-
-      {/* Stats */}
-      {!loading && rows.length > 0 && (
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--t3)' }}>
-          <span>{rows.length} leads total</span>
-          {rawCount > 0      && <span style={{ color: '#525866' }}>· {rawCount} sin procesar</span>}
-          {enrichedCount > 0 && <span style={{ color: '#06B6D4' }}>· {enrichedCount} enriquecidos</span>}
-          {displayed.length !== rows.length && <span>· {displayed.length} visibles (filtros activos)</span>}
-        </div>
-      )}
 
       {/* Table */}
       {loading ? (

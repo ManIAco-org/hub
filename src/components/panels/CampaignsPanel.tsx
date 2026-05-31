@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Megaphone, Plus, X, MessageCircle, Mail, Layers, ChevronRight, Clock } from 'lucide-react'
+import { Megaphone, Plus, X, MessageCircle, Mail, Layers, ChevronRight, Clock, CheckSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { Campaign, CampaignChannel, CampaignStatus } from '@/lib/types'
@@ -139,14 +139,14 @@ function NewCampaignModal({ ownerEmail, onClose, onCreated }: {
             <textarea
               value={form.icp_prompt}
               onChange={update('icp_prompt')}
-              placeholder="agencias de marketing digital en Córdoba Argentina"
+              placeholder="Inmobiliarias chicas en Córdoba capital, preferentemente dentro de la circunvalación, con atención al cliente"
               rows={3}
               className="input"
               required
               style={{ resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
             />
             <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '4px' }}>
-              Describe el tipo de empresa que querés contactar. Se usa como query de búsqueda.
+              Describí en lenguaje natural qué tipo de empresa buscás. Claude genera las queries de búsqueda automáticamente.
             </p>
           </div>
 
@@ -297,7 +297,7 @@ export function CampaignsPanel({ campaigns, ownerEmail }: { campaigns: Campaign[
       )}
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
           <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--t1)', marginBottom: '2px' }}>
             Campañas
@@ -306,14 +306,20 @@ export function CampaignsPanel({ campaigns, ownerEmail }: { campaigns: Campaign[
             {campaigns.length} campaña{campaigns.length !== 1 ? 's' : ''} · outreach automatizado
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="btn-primary"
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', flexShrink: 0 }}
-        >
-          <Plus size={14} />
-          Nueva campaña
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <a href="/dashboard/marketing/approval"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', padding: '8px 14px', background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', color: 'var(--t2)', textDecoration: 'none', fontWeight: 500 }}>
+            <CheckSquare size={14} />Cola de aprobación
+          </a>
+          <button
+            onClick={() => setShowModal(true)}
+            className="btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', flexShrink: 0 }}
+          >
+            <Plus size={14} />
+            Nueva campaña
+          </button>
+        </div>
       </div>
 
       {/* List */}

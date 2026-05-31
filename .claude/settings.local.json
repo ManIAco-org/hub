@@ -19,7 +19,28 @@
       "Bash(git -C \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" config user.email)",
       "Bash(git -C \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" status --short)",
       "Bash(git -C \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" branch --show-current)",
-      "Bash(git -C \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" add -A)"
+      "Bash(git -C \"C:\\\\Users\\\\PITON\\\\OneDrive\\\\Escritorio\\\\ManIAco\" add -A)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git cherry-pick *)",
+      "Bash(git push *)",
+      "Bash(git credential *)",
+      "Bash(python3 -c \"import requests; print\\('requests ok'\\)\")",
+      "Bash(python3 .specify/scripts/create_issues.py)",
+      "Skill(design-consultation)",
+      "Skill(design-consultation:*)",
+      "Bash(mkdir -p C:/Users/PITON/projects/brand/.claude)",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__tabs_create_mcp",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:4800/design-preview-v4.html)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :4800)",
+      "Bash(where gh *)",
+      "Bash(git config *)",
+      "Bash(git rebase *)",
+      "Bash(git filter-branch -f --env-filter ' *)"
     ]
   }
 }

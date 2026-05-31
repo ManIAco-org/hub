@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
-import { scrapeLeads } from '@/lib/agents/scrapeLeads'
-import { enrichLeads } from '@/lib/agents/enrichLeads'
+import { scrapeLeads, radiusToZoom } from '@/lib/agents/scrapeLeads'
 
 export const maxDuration = 60
 
-/** Service-role client for background job — runs after response is sent */
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -24,11 +22,9 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json() as {
       campaignId?: string
-      count?: number
-      requireWebsite?: boolean
-      autoEnrich?: boolean
+      radiusKm?: number
     }
-    const { campaignId, count = 20, requireWebsite = true, autoEnrich = true } = body
+    const { campaignId, radiusKm = 5 } = body
     if (!campaignId) return NextResponse.json({ error: 'campaignId requerido' }, { status: 400 })
 
     const { data: campaign } = await supabase
@@ -38,63 +34,47 @@ export async function POST(req: NextRequest) {
     const serpApiKey = process.env.SERPAPI_KEY
     if (!serpApiKey) return NextResponse.json({ error: 'SERPAPI_KEY no configurada' }, { status: 500 })
 
-    // Insert job record
+    const radiusZoom = radiusToZoom(Math.max(1, Math.min(50, radiusKm)))
+
     const { data: job, error: jobError } = await supabase
       .from('agent_jobs')
       .insert({
-        type:       autoEnrich ? 'scrape_enrich' : 'scrape',
+        type:       'scrape',
         status:     'queued',
-        params:     { campaignId, count, requireWebsite, autoEnrich },
+        params:     { campaignId, radiusKm, radiusZoom },
         created_by: user.email!,
       })
-      .select('id')
-      .single()
+      .select('id').single()
 
-    if (jobError || !job) {
-      return NextResponse.json({ error: 'Error creando job' }, { status: 500 })
-    }
+    if (jobError || !job) return NextResponse.json({ error: 'Error creando job' }, { status: 500 })
 
     const jobId = job.id
 
-    // Fire-and-forget: continues after response is sent
     after(async () => {
       const svc = getServiceClient()
       try {
-        await svc.from('agent_jobs').update({ status: 'running', started_at: new Date().toISOString() }).eq('id', jobId)
+        await svc.from('agent_jobs')
+          .update({ status: 'running', started_at: new Date().toISOString() })
+          .eq('id', jobId)
 
-        // Scrape
-        const scrapeResult = await scrapeLeads({
-          supabase: svc,
+        const result = await scrapeLeads({
+          supabase:   svc,
           campaignId,
-          icpPrompt: campaign.icp_prompt,
-          count: Math.min(Math.max(1, count), 100),
-          requireWebsite,
+          icpPrompt:  campaign.icp_prompt,
+          radiusZoom,
+          maxResults: 500,
           serpApiKey,
         })
-
-        let enrichResult = { enriched: 0, failed: 0, total: 0 }
-
-        // Enrich newly scraped leads (if autoEnrich)
-        if (autoEnrich && scrapeResult.insertedIds.length > 0) {
-          enrichResult = await enrichLeads({
-            supabase: svc,
-            campaignId,
-            icpPrompt: campaign.icp_prompt,
-            max: Math.min(scrapeResult.insertedIds.length, 30),
-            leadGlobalIds: scrapeResult.insertedIds,
-          })
-        }
 
         await svc.from('agent_jobs').update({
           status:      'done',
           finished_at: new Date().toISOString(),
           result: {
-            scraped:    scrapeResult.inserted,
-            reused:     scrapeResult.reusedFromCache,
-            enriched:   enrichResult.enriched,
-            failed_enrich: enrichResult.failed,
-            query:      scrapeResult.query,
-            location:   scrapeResult.location,
+            inserted:        result.inserted,
+            reusedFromCache: result.reusedFromCache,
+            skipped:         result.skipped,
+            requests:        result.requests,
+            queries:         result.queries,
             campaignId,
           },
         }).eq('id', jobId)
@@ -109,7 +89,7 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    return NextResponse.json({ job_id: jobId, message: 'Job iniciado en background' })
+    return NextResponse.json({ job_id: jobId, message: 'Búsqueda iniciada en background' })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error inesperado'
     console.error('[campaigns/run]', msg)
