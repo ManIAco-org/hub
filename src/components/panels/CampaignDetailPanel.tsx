@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import {
   BarChart3, Users, Search, Globe, Phone, Mail,
-  ExternalLink, RefreshCw, X, Loader2, MapPin, Star,
+  ExternalLink, RefreshCw, X, Loader2, MapPin, Star, PenLine,
 } from 'lucide-react'
 import type { Campaign, CampaignLeadFull, LeadGlobal, LeadStatus, EnrichedData } from '@/lib/types'
 
@@ -276,6 +276,118 @@ function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () =>
   )
 }
 
+// ── Writer Modal ──────────────────────────────────────────────────────────────
+function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose }: {
+  campaign: Campaign
+  eligibleCount: number
+  currentUserEmail: string
+  onClose: () => void
+}) {
+  const [signedByEmail, setSignedByEmail] = useState(currentUserEmail)
+  const [loading, setLoading] = useState(false)
+
+  const SIGNERS = [
+    { email: 'franco.sanmartin@maniaco.online', name: 'Franco' },
+    { email: 'lucho@maniaco.online',            name: 'Lucho' },
+    { email: 'noe@maniaco.online',              name: 'Noe' },
+  ]
+
+  const estimatedCost = (eligibleCount * 0.004).toFixed(3)
+
+  async function handleGenerate() {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/agents/writer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId: campaign.id, signedByEmail }),
+      })
+      const json = await res.json() as { created?: number; skipped?: number; failed?: number; error?: string }
+      if (!res.ok || json.error) {
+        toast.error(json.error ?? 'Error generando drafts')
+      } else {
+        const parts = []
+        if (json.created)  parts.push(`${json.created} draft${json.created !== 1 ? 's' : ''} generados`)
+        if (json.skipped)  parts.push(`${json.skipped} ya tenían draft`)
+        if (json.failed)   parts.push(`${json.failed} fallaron`)
+        toast.success(parts.join(' · ') || 'Sin cambios')
+        onClose()
+      }
+    } catch {
+      toast.error('Error de red')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--s1)', border: '1px solid var(--border)', borderRadius: 'var(--r12)', padding: '24px', width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <PenLine size={18} color="var(--acc)" />
+            <h3 style={{ fontWeight: 700, color: 'var(--t1)', fontSize: 'var(--text-md)' }}>Generar drafts</h3>
+          </div>
+          <button onClick={onClose} disabled={loading} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', display: 'flex', padding: '4px' }}><X size={16} /></button>
+        </div>
+
+        {/* Info */}
+        <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '12px' }}>
+          <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Canal</p>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t2)' }}>
+            {campaign.channel === 'whatsapp' ? 'WhatsApp (≤300 caracteres)' : campaign.channel === 'email' ? 'Email (asunto + cuerpo)' : 'WhatsApp (≤300 caracteres)'}
+          </p>
+        </div>
+
+        {/* Signer */}
+        <div>
+          <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>Firmante</label>
+          <select value={signedByEmail} onChange={(e) => setSignedByEmail(e.target.value)}
+            className="input" style={{ height: '38px' }} disabled={loading}>
+            {SIGNERS.map((s) => (
+              <option key={s.email} value={s.email}>{s.name} ({s.email})</option>
+            ))}
+          </select>
+          <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '4px' }}>El mensaje firma en primera persona del socio seleccionado.</p>
+        </div>
+
+        {/* Cost / eligible */}
+        <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '10px 12px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+          <div>
+            <p style={{ fontSize: '10px', color: 'var(--t3)' }}>Leads elegibles</p>
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--t1)' }}>{eligibleCount > 0 ? eligibleCount : '—'}</p>
+          </div>
+          <div>
+            <p style={{ fontSize: '10px', color: 'var(--t3)' }}>Costo estimado</p>
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--t1)' }}>~${estimatedCost}</p>
+          </div>
+          <div style={{ flex: 1, fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
+            Claude Sonnet · solo leads enriquecidos con score ≥ 5/10 · omite leads con draft activo.
+          </div>
+        </div>
+
+        {eligibleCount === 0 && (
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--warn)', textAlign: 'center' }}>
+            No hay leads enriquecidos con score ≥ 5. Enriquecé primero desde "Nueva búsqueda".
+          </p>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} disabled={loading} className="btn-secondary" style={{ fontSize: 'var(--text-sm)' }}>Cancelar</button>
+          <button onClick={handleGenerate} disabled={loading || eligibleCount === 0} className="btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', opacity: (loading || eligibleCount === 0) ? 0.7 : 1, minWidth: '150px', justifyContent: 'center' }}>
+            {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <PenLine size={14} />}
+            {loading ? 'Generando...' : `Generar${eligibleCount > 0 ? ` (${eligibleCount})` : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Tab: Resumen ──────────────────────────────────────────────────────────────
 function TabResumen({ campaign, leadCount }: { campaign: Campaign; leadCount: number }) {
   const CHANNEL_LABELS    = { whatsapp: 'WhatsApp', email: 'Email', both: 'WhatsApp + Email' }
@@ -309,7 +421,7 @@ function TabResumen({ campaign, leadCount }: { campaign: Campaign; leadCount: nu
 // ── Tab: Leads ────────────────────────────────────────────────────────────────
 type SortBy = 'fit_desc' | 'fit_asc' | 'created_desc' | 'name_asc'
 
-function TabLeads({ campaign }: { campaign: Campaign }) {
+function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentUserEmail: string }) {
   const supabase = createClient()
   const [rows, setRows] = useState<CampaignLeadFull[]>([])
   const [loading, setLoading] = useState(true)
@@ -317,6 +429,7 @@ function TabLeads({ campaign }: { campaign: Campaign }) {
   const [minScore, setMinScore] = useState(0)
   const [sortBy, setSortBy] = useState<SortBy>('fit_desc')
   const [showSearch, setShowSearch] = useState(false)
+  const [showWriter, setShowWriter] = useState(false)
   const [selectedRow, setSelectedRow] = useState<CampaignLeadFull | null>(null)
 
   const loadLeads = useCallback(async () => {
@@ -343,8 +456,9 @@ function TabLeads({ campaign }: { campaign: Campaign }) {
     return () => { supabase.removeChannel(ch) }
   }, [campaign.id, loadLeads]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const rawCount      = rows.filter((r) => r.status === 'raw').length
-  const enrichedCount = rows.filter((r) => r.status === 'enriched').length
+  const rawCount          = rows.filter((r) => r.status === 'raw').length
+  const enrichedCount     = rows.filter((r) => r.status === 'enriched').length
+  const writerEligible    = rows.filter((r) => r.status === 'enriched' && (r.leads_global.fit_score ?? 0) >= 5).length
 
   const displayed = [...rows]
     .filter((r) => filterStatus === 'all' || r.status === filterStatus)
@@ -369,6 +483,14 @@ function TabLeads({ campaign }: { campaign: Campaign }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {showSearch && <SearchModal campaign={campaign} onClose={() => setShowSearch(false)} />}
+      {showWriter && (
+        <WriterModal
+          campaign={campaign}
+          eligibleCount={writerEligible}
+          currentUserEmail={currentUserEmail}
+          onClose={() => setShowWriter(false)}
+        />
+      )}
       {selectedRow && (
         <LeadDrawer
           lead={selectedRow.leads_global}
@@ -407,6 +529,16 @@ function TabLeads({ campaign }: { campaign: Campaign }) {
           style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', padding: '8px 16px' }}>
           <Search size={14} />
           Nueva búsqueda
+        </button>
+        <button onClick={() => setShowWriter(true)} className="btn-secondary"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', padding: '8px 16px', position: 'relative' }}>
+          <PenLine size={14} />
+          Generar drafts
+          {writerEligible > 0 && (
+            <span style={{ position: 'absolute', top: '-6px', right: '-6px', background: 'var(--acc)', color: '#000', fontSize: '10px', fontWeight: 700, borderRadius: '999px', padding: '1px 5px', lineHeight: 1.4 }}>
+              {writerEligible}
+            </span>
+          )}
         </button>
       </div>
 
@@ -550,7 +682,14 @@ export function CampaignDetailPanel({ campaign, initialLeadCount }: {
 }) {
   const [activeTab, setActiveTab] = useState<Tab>('leads')
   const [leadCount, setLeadCount] = useState(initialLeadCount)
+  const [currentUserEmail, setCurrentUserEmail] = useState('franco.sanmartin@maniaco.online')
   const supabase = createClient()
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setCurrentUserEmail(data.user.email)
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeTab === 'resumen') {
@@ -582,7 +721,7 @@ export function CampaignDetailPanel({ campaign, initialLeadCount }: {
       </div>
       <div style={{ padding: '24px 28px', flex: 1, overflowY: 'auto' }}>
         {activeTab === 'resumen' && <TabResumen campaign={campaign} leadCount={leadCount} />}
-        {activeTab === 'leads'   && <TabLeads   campaign={campaign} />}
+        {activeTab === 'leads'   && <TabLeads   campaign={campaign} currentUserEmail={currentUserEmail} />}
       </div>
     </div>
   )

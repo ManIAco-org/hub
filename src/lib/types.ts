@@ -123,7 +123,27 @@ export interface Campaign {
 
 // ── Agent jobs ─────────────────────────────────────────────────────────────────
 export type AgentJobStatus = 'queued' | 'running' | 'done' | 'failed'
-export type AgentJobType   = 'scrape' | 'enrich' | 'scrape_enrich'
+export type AgentJobType   = 'scrape' | 'enrich' | 'scrape_enrich' | 'write'
+
+export type DraftStatus = 'pending' | 'approved' | 'rejected' | 'sent' | 'expired'
+
+export interface Draft {
+  id: string
+  lead_global_id: string
+  campaign_id: string
+  channel: Exclude<CampaignChannel, 'both'>
+  body: string
+  subject: string | null
+  language: string
+  signed_by_email: string
+  status: DraftStatus
+  approved_by: string | null
+  approved_at: string | null
+  rejection_reason: string | null
+  edited_diff: string | null
+  draft_hash: string
+  created_at: string
+}
 
 export interface AgentJob {
   id: string
