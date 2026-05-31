@@ -288,8 +288,8 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose }: {
 
   const SIGNERS = [
     { email: 'franco.sanmartin@maniaco.online', name: 'Franco' },
-    { email: 'lucho@maniaco.online',            name: 'Lucho' },
-    { email: 'noe@maniaco.online',              name: 'Noe' },
+    { email: 'luis.giannasi@maniaco.online',    name: 'Lucho' },
+    { email: 'noelia.bottallo@maniaco.online',  name: 'Noe' },
   ]
 
   const estimatedCost = (eligibleCount * 0.004).toFixed(3)
@@ -682,7 +682,7 @@ export function CampaignDetailPanel({ campaign, initialLeadCount }: {
 }) {
   const [activeTab, setActiveTab] = useState<Tab>('leads')
   const [leadCount, setLeadCount] = useState(initialLeadCount)
-  const [currentUserEmail, setCurrentUserEmail] = useState('franco.sanmartin@maniaco.online')
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>('franco.sanmartin@maniaco.online')
   const supabase = createClient()
 
   useEffect(() => {
