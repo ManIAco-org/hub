@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { enrichLeads } from '@/lib/agents/enrichLeads'
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!

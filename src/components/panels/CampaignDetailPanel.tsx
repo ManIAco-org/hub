@@ -194,7 +194,7 @@ function LeadDrawer({ lead, status, campaignId, onClose }: {
 }
 
 // ── Nueva Búsqueda Modal (scrape + enrich integrado) ──────────────────────────
-function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) {
+function SearchModal({ campaign, onClose, onStarted }: { campaign: Campaign; onClose: () => void; onStarted?: () => void }) {
   const [radiusKm, setRadiusKm] = useState(5)
 
   const RADIUS_OPTIONS = [
@@ -206,6 +206,7 @@ function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () =>
 
   function handleStart() {
     onClose()
+    onStarted?.()
     toast.loading('Buscando leads en background...', { id: 'search-bg' })
     fetch('/api/agents/campaigns/run', {
       method: 'POST',
@@ -286,11 +287,12 @@ function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () =>
 }
 
 // ── Writer Modal ──────────────────────────────────────────────────────────────
-function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose }: {
+function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose, onStarted }: {
   campaign: Campaign
   eligibleCount: number
   currentUserEmail: string
   onClose: () => void
+  onStarted?: () => void
 }) {
   const [signedByEmail, setSignedByEmail] = useState(currentUserEmail)
   const [maxDrafts, setMaxDrafts] = useState(Math.min(eligibleCount, 50))
@@ -309,6 +311,7 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose }: {
     const email = signedByEmail
     const max = actualMax
     onClose()
+    onStarted?.()
     toast.loading(`Generando ${max} draft${max !== 1 ? 's' : ''} en background...`, { id: 'writer-bg' })
     fetch('/api/agents/writer', {
       method: 'POST',
@@ -451,6 +454,7 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
   const [showSearch, setShowSearch] = useState(false)
   const [showWriter, setShowWriter] = useState(false)
   const [selectedRow, setSelectedRow] = useState<CampaignLeadFull | null>(null)
+  const [runningAction, setRunningAction] = useState<'search' | 'enrich' | 'write' | null>(null)
 
   const loadLeads = useCallback(async () => {
     setLoading(true)
@@ -466,15 +470,26 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
 
   useEffect(() => { loadLeads() }, [loadLeads])
 
-  // Realtime for both INSERT and UPDATE on campaign_leads
+  // Realtime for campaign_leads + leads_global changes
   useEffect(() => {
     const ch = supabase.channel(`cl-${campaign.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'campaign_leads', filter: `campaign_id=eq.${campaign.id}` }, () => loadLeads())
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'campaign_leads', filter: `campaign_id=eq.${campaign.id}` }, () => loadLeads())
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads_global' }, () => loadLeads())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'campaign_leads', filter: `campaign_id=eq.${campaign.id}` }, () => { loadLeads(); setRunningAction(null) })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads_global' }, () => { loadLeads(); setRunningAction((prev) => prev === 'enrich' ? null : prev) })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [campaign.id, loadLeads]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Realtime: watch agent_jobs to clear running state when jobs complete
+  useEffect(() => {
+    const ch2 = supabase.channel(`jobs-watch-${campaign.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'agent_jobs' }, (payload) => {
+        const job = payload.new as { status: string }
+        if (job.status === 'done' || job.status === 'failed') setRunningAction(null)
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch2) }
+  }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const rawCount          = rows.filter((r) => r.status === 'raw').length
   const enrichedCount     = rows.filter((r) => r.status === 'enriched').length
@@ -502,13 +517,14 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {showSearch && <SearchModal campaign={campaign} onClose={() => setShowSearch(false)} />}
+      {showSearch && <SearchModal campaign={campaign} onClose={() => setShowSearch(false)} onStarted={() => setRunningAction('search')} />}
       {showWriter && (
         <WriterModal
           campaign={campaign}
           eligibleCount={writerEligible}
           currentUserEmail={currentUserEmail}
           onClose={() => setShowWriter(false)}
+          onStarted={() => setRunningAction('write')}
         />
       )}
       {selectedRow && (
@@ -521,82 +537,119 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
       )}
 
       {/* ── 3 Action cards ───────────────────────────────────────────────────── */}
+      <style>{`
+        @keyframes pulse-bar { 0%,100%{opacity:0.4} 50%{opacity:1} }
+        .running-bar { animation: pulse-bar 1.4s ease-in-out infinite; }
+      `}</style>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+
         {/* Card 1: Buscar */}
-        <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Search size={13} color="var(--acc)" />
-            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Buscar</span>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
-            <span style={{ fontSize: '22px', fontWeight: 700, color: 'var(--t1)', fontFamily: 'var(--mono)' }}>{rows.length}</span>
-            <span style={{ fontSize: '11px', color: 'var(--t3)' }}>leads en BD</span>
-          </div>
-          <p style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4, minHeight: '28px' }}>
-            {rawCount > 0 ? `${rawCount} sin procesar` : rows.length === 0 ? 'Sin leads todavía' : 'Todos procesados'}
-          </p>
-          <button onClick={() => setShowSearch(true)} className="btn-primary"
-            style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
-            <Search size={12} />Buscar más
-          </button>
-        </div>
+        {(() => {
+          const isRunning = runningAction === 'search'
+          return (
+            <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? 'var(--acc)' : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
+              {isRunning && <div className="running-bar" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'var(--acc)' }} />}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Search size={13} color="var(--acc)" />
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Buscar</span>
+                </div>
+                {isRunning && <span style={{ fontSize: '10px', color: 'var(--acc)', fontWeight: 600 }}>corriendo...</span>}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
+                <span style={{ fontSize: '22px', fontWeight: 700, color: 'var(--t1)', fontFamily: 'var(--mono)' }}>{rows.length}</span>
+                <span style={{ fontSize: '11px', color: 'var(--t3)' }}>leads totales</span>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
+                {rawCount > 0 ? <span style={{ color: '#525866' }}>{rawCount} sin procesar</span> : rows.length === 0 ? 'Sin leads todavía' : 'Todos procesados'}
+                <br /><span style={{ color: 'var(--t3)', opacity: 0.7 }}>~$0.002/request · SerpAPI</span>
+              </div>
+              <button onClick={() => { setShowSearch(true) }} className="btn-primary"
+                style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
+                <Search size={12} />Buscar más
+              </button>
+            </div>
+          )
+        })()}
 
         {/* Card 2: Enriquecer */}
-        <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Zap size={13} color="#22C55E" />
-            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Enriquecer</span>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
-            <span style={{ fontSize: '22px', fontWeight: 700, color: rawCount > 0 ? '#22C55E' : 'var(--t3)', fontFamily: 'var(--mono)' }}>{rawCount}</span>
-            <span style={{ fontSize: '11px', color: 'var(--t3)' }}>sin enriquecer</span>
-          </div>
-          <p style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4, minHeight: '28px' }}>
-            {enrichedCount > 0 ? `${enrichedCount} ya enriquecidos` : 'Claude Haiku · score + bio'}
-          </p>
-          <button
-            onClick={() => {
-              if (rawCount === 0) return
-              toast.loading(`Enriqueciendo ${rawCount} leads...`, { id: 'enrich-bg' })
-              fetch('/api/agents/enrich', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ campaignId: campaign.id, max: 100 }),
-              })
-                .then(r => r.json())
-                .then((j: { job_id?: string; error?: string }) => {
-                  if (j.error) toast.error(j.error, { id: 'enrich-bg' })
-                  else toast.success('Enriquecimiento corriendo en background', { id: 'enrich-bg', duration: 5000 })
-                })
-                .catch(() => toast.error('Error de red', { id: 'enrich-bg' }))
-            }}
-            disabled={rawCount === 0}
-            className={rawCount > 0 ? 'btn-secondary' : 'btn-secondary'}
-            style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center', opacity: rawCount === 0 ? 0.4 : 1 }}>
-            <Zap size={12} />{rawCount > 0 ? `Enriquecer (${rawCount})` : 'Sin pendientes'}
-          </button>
-        </div>
+        {(() => {
+          const isRunning = runningAction === 'enrich'
+          const estCost = (rawCount * 0.001).toFixed(3)
+          return (
+            <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? '#22C55E' : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
+              {isRunning && <div className="running-bar" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: '#22C55E' }} />}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Zap size={13} color="#22C55E" />
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Enriquecer</span>
+                </div>
+                {isRunning && <span style={{ fontSize: '10px', color: '#22C55E', fontWeight: 600 }}>corriendo...</span>}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
+                <span style={{ fontSize: '22px', fontWeight: 700, color: rawCount > 0 ? '#22C55E' : 'var(--t3)', fontFamily: 'var(--mono)' }}>{rawCount}</span>
+                <span style={{ fontSize: '11px', color: 'var(--t3)' }}>sin enriquecer</span>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
+                {enrichedCount > 0 ? <span>{enrichedCount} ya enriquecidos</span> : <span>score 0-10 + bio + razón</span>}
+                <br /><span style={{ opacity: 0.7 }}>~${estCost} est. · Haiku</span>
+              </div>
+              <button
+                onClick={() => {
+                  if (rawCount === 0 || isRunning) return
+                  setRunningAction('enrich')
+                  toast.loading(`Enriqueciendo ${rawCount} leads...`, { id: 'enrich-bg' })
+                  fetch('/api/agents/enrich', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ campaignId: campaign.id, max: 100 }),
+                  })
+                    .then(r => r.json())
+                    .then((j: { job_id?: string; error?: string }) => {
+                      if (j.error) { toast.error(j.error, { id: 'enrich-bg' }); setRunningAction(null) }
+                      else toast.success('Enriquecimiento corriendo en background', { id: 'enrich-bg', duration: 5000 })
+                    })
+                    .catch(() => { toast.error('Error de red', { id: 'enrich-bg' }); setRunningAction(null) })
+                }}
+                disabled={rawCount === 0 || isRunning}
+                className="btn-secondary"
+                style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center', opacity: (rawCount === 0 || isRunning) ? 0.4 : 1 }}>
+                <Zap size={12} />{isRunning ? 'Corriendo...' : rawCount > 0 ? `Enriquecer (${rawCount})` : 'Sin pendientes'}
+              </button>
+            </div>
+          )
+        })()}
 
         {/* Card 3: Drafts */}
-        <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <PenLine size={13} color="var(--acc)" />
-            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Drafts</span>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
-            <span style={{ fontSize: '22px', fontWeight: 700, color: writerEligible > 0 ? 'var(--acc)' : 'var(--t3)', fontFamily: 'var(--mono)' }}>{writerEligible}</span>
-            <span style={{ fontSize: '11px', color: 'var(--t3)' }}>listos (score ≥ 5)</span>
-          </div>
-          <p style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4, minHeight: '28px' }}>
-            Claude Sonnet · {campaign.channel === 'email' ? 'email personalizado' : 'WhatsApp ≤300 chars'}
-          </p>
-          <button onClick={() => setShowWriter(true)} disabled={writerEligible === 0}
-            className="btn-secondary"
-            style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center', opacity: writerEligible === 0 ? 0.4 : 1, position: 'relative' }}>
-            <PenLine size={12} />{writerEligible > 0 ? `Generar (${writerEligible})` : 'Sin elegibles'}
-          </button>
-        </div>
-      </div>
+        {(() => {
+          const isRunning = runningAction === 'write'
+          const estCost = (writerEligible * 0.004).toFixed(3)
+          return (
+            <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? 'var(--acc)' : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
+              {isRunning && <div className="running-bar" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'var(--acc)' }} />}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <PenLine size={13} color="var(--acc)" />
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Drafts</span>
+                </div>
+                {isRunning && <span style={{ fontSize: '10px', color: 'var(--acc)', fontWeight: 600 }}>corriendo...</span>}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
+                <span style={{ fontSize: '22px', fontWeight: 700, color: writerEligible > 0 ? 'var(--acc)' : 'var(--t3)', fontFamily: 'var(--mono)' }}>{writerEligible}</span>
+                <span style={{ fontSize: '11px', color: 'var(--t3)' }}>listos (score ≥ 5)</span>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
+                {campaign.channel === 'email' ? 'Email personalizado' : 'WhatsApp ≤300 chars'}
+                <br /><span style={{ opacity: 0.7 }}>~${estCost} est. · Sonnet</span>
+              </div>
+              <button onClick={() => { if (!isRunning) setShowWriter(true) }} disabled={writerEligible === 0 || isRunning}
+                className="btn-secondary"
+                style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center', opacity: (writerEligible === 0 || isRunning) ? 0.4 : 1 }}>
+                <PenLine size={12} />{isRunning ? 'Corriendo...' : writerEligible > 0 ? `Generar (${writerEligible})` : 'Sin elegibles'}
+              </button>
+            </div>
+          )
+        })()}
 
       {/* ── Filtros y tabla ───────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>

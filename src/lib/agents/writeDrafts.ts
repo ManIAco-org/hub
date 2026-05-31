@@ -129,13 +129,14 @@ export async function writeDrafts(opts: WriteDraftsOptions): Promise<WriteDrafts
 
   for (const lead of leads as LeadRow[]) {
     try {
-      // Dedup: skip if active draft already exists
+      // Dedup: skip only if lead already has an approved or sent draft (in pipeline)
+      // Pending drafts can be regenerated
       const { data: existing } = await supabase
         .from('drafts')
         .select('id')
         .eq('lead_global_id', lead.id)
         .eq('campaign_id', campaignId)
-        .in('status', ['pending', 'approved', 'sent'])
+        .in('status', ['approved', 'sent'])
         .maybeSingle()
 
       if (existing) {

@@ -53,13 +53,13 @@ ${websiteContent || 'Sin website accesible'}
 ICP buscado: ${icpPrompt}
 
 Devolvé EXACTAMENTE este JSON sin markdown:
-{"contact_name":null,"linkedin":null,"bio":"descripción max 120 chars","fit_score":7,"fit_reason":"razón detallada max 200 chars — explicá qué tiene y qué falta del ICP"}
+{"contact_name":null,"linkedin":null,"bio":"descripción max 120 chars","fit_score":7,"fit_reason":"razón detallada sin límite — explicá qué tiene y qué falta del ICP, por qué el score es ese número"}
 
 Criterios fit_score: 9-10=ICP exacto+web profesional+datos completos, 6-8=coincide ICP datos limitados, 3-5=parcialmente relevante, 0-2=no coincide`
 
   const msg = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 512,
+    max_tokens: 800,
     system: 'Sos agente enriquecedor B2B. Devolvés SOLO JSON válido sin markdown ni texto extra.',
     messages: [{ role: 'user', content: prompt }],
   })
@@ -73,7 +73,7 @@ Criterios fit_score: 9-10=ICP exacto+web profesional+datos completos, 6-8=coinci
     linkedin:     typeof parsed.linkedin === 'string' && parsed.linkedin.startsWith('http') ? parsed.linkedin : null,
     bio:          (parsed.bio ?? '').slice(0, 120),
     fit_score:    Math.min(10, Math.max(0, Math.round(Number(parsed.fit_score ?? 0)))),
-    fit_reason:   (parsed.fit_reason ?? '').slice(0, 200),
+    fit_reason:   (parsed.fit_reason ?? '') || null,
   }
 }
 
