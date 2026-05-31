@@ -240,6 +240,8 @@ export function DraftApprovalQueue({ initialDrafts, userEmail }: {
   }
 
   // ── Card mode ────────────────────────────────────────────────────────────────
+  if (!current) return null
+
   const lead = current.leads_global
   const enriched = lead?.enriched_data as EnrichedData | null
   const isWA = current.channel !== 'email'
