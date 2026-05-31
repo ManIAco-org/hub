@@ -49,9 +49,28 @@ function FitScoreBadge({ score }: { score: number | null | undefined }) {
 }
 
 // ── Lead Drawer ───────────────────────────────────────────────────────────────
-function LeadDrawer({ lead, status, onClose }: { lead: LeadGlobal; status: LeadStatus; onClose: () => void }) {
+interface DraftRow { body: string; status: string; signed_by_email: string; channel: string; created_at: string }
+
+function LeadDrawer({ lead, status, campaignId, onClose }: {
+  lead: LeadGlobal; status: LeadStatus; campaignId: string; onClose: () => void
+}) {
+  const supabase = createClient()
   const enriched = lead.enriched_data as EnrichedData | null
   const raw = lead.raw_data as Record<string, unknown> | null
+  const [draft, setDraft] = useState<DraftRow | null>(null)
+
+  useEffect(() => {
+    supabase
+      .from('drafts')
+      .select('body, status, signed_by_email, channel, created_at')
+      .eq('lead_global_id', lead.id)
+      .eq('campaign_id', campaignId)
+      .in('status', ['pending', 'approved', 'sent'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setDraft(data as DraftRow | null))
+  }, [lead.id, campaignId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -145,6 +164,29 @@ function LeadDrawer({ lead, status, onClose }: { lead: LeadGlobal; status: LeadS
               <p style={{ fontSize: '11px', color: 'var(--t3)', fontFamily: 'var(--mono)', wordBreak: 'break-word' }}>{lead.enrichment_error}</p>
             </div>
           )}
+
+          {/* Draft generado */}
+          {draft && (
+            <div style={{ background: '#22C55E08', border: '1px solid #22C55E30', borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <p style={{ fontSize: '11px', fontWeight: 600, color: '#22C55E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Draft {draft.channel === 'whatsapp' ? 'WhatsApp' : 'Email'}
+                </p>
+                <span style={{
+                  fontSize: '10px', fontWeight: 600, padding: '2px 7px', borderRadius: '6px',
+                  background: draft.status === 'approved' ? '#22C55E20' : draft.status === 'sent' ? '#A3E63520' : '#EAB30820',
+                  color: draft.status === 'approved' ? '#22C55E' : draft.status === 'sent' ? '#A3E635' : '#EAB308',
+                  border: `1px solid ${draft.status === 'approved' ? '#22C55E40' : draft.status === 'sent' ? '#A3E63540' : '#EAB30840'}`,
+                }}>
+                  {draft.status === 'approved' ? 'Aprobado' : draft.status === 'sent' ? 'Enviado' : 'Pendiente'}
+                </span>
+              </div>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--t1)', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{draft.body}</p>
+              <p style={{ fontSize: '10px', color: 'var(--t3)' }}>
+                Firmado por {draft.signed_by_email.split('@')[0]?.split('.')[0]?.replace(/^\w/, c => c.toUpperCase()) ?? '—'} · {new Date(draft.created_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </>
@@ -156,34 +198,22 @@ function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () =>
   const [count, setCount] = useState(20)
   const [requireWebsite, setRequireWebsite] = useState(true)
   const [autoEnrich, setAutoEnrich] = useState(true)
-  const [loading, setLoading] = useState(false)
-  const [jobId, setJobId] = useState<string | null>(null)
 
   const reqsEst = Math.ceil(count / 20)
   const serpCost = (reqsEst * 0.01).toFixed(2)
   const enrichCost = autoEnrich ? (count * 0.001).toFixed(3) : '0.000'
 
-  async function handleStart() {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/agents/campaigns/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId: campaign.id, count, requireWebsite, autoEnrich }),
+  function handleStart() {
+    const body = JSON.stringify({ campaignId: campaign.id, count, requireWebsite, autoEnrich })
+    onClose()
+    toast.loading('Buscando leads en background...', { id: 'search-bg' })
+    fetch('/api/agents/campaigns/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+      .then(r => r.json())
+      .then((json: { job_id?: string; error?: string }) => {
+        if (json.error) toast.error(json.error, { id: 'search-bg' })
+        else toast.success('Búsqueda corriendo — te avisamos cuando termine', { id: 'search-bg', duration: 5000 })
       })
-      const json = await res.json() as { job_id?: string; error?: string }
-      if (!res.ok || json.error) {
-        toast.error(json.error ?? 'Error iniciando búsqueda')
-      } else {
-        setJobId(json.job_id ?? null)
-        toast.success('🔍 Búsqueda iniciada en background. Te avisamos cuando termine.', { duration: 6000 })
-        onClose()
-      }
-    } catch {
-      toast.error('Error de red')
-    } finally {
-      setLoading(false)
-    }
+      .catch(() => toast.error('Error de red al buscar leads', { id: 'search-bg' }))
   }
 
   return (
@@ -196,7 +226,7 @@ function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () =>
             <Search size={18} color="var(--acc)" />
             <h3 style={{ fontWeight: 700, color: 'var(--t1)', fontSize: 'var(--text-md)' }}>Nueva búsqueda de leads</h3>
           </div>
-          <button onClick={onClose} disabled={loading} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', display: 'flex', padding: '4px' }}><X size={16} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', display: 'flex', padding: '4px' }}><X size={16} /></button>
         </div>
 
         {/* ICP preview */}
@@ -208,7 +238,7 @@ function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () =>
         {/* Count */}
         <div>
           <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>Cantidad de leads</label>
-          <select value={count} onChange={(e) => setCount(Number(e.target.value))} className="input" style={{ height: '38px' }} disabled={loading}>
+          <select value={count} onChange={(e) => setCount(Number(e.target.value))} className="input" style={{ height: '38px' }}>
             {[10, 20, 30, 50, 100].map((n) => <option key={n} value={n}>{n} leads</option>)}
           </select>
           {count > 20
@@ -220,7 +250,7 @@ function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () =>
         {/* Options */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
-            <input type="checkbox" checked={requireWebsite} onChange={(e) => setRequireWebsite(e.target.checked)} disabled={loading}
+            <input type="checkbox" checked={requireWebsite} onChange={(e) => setRequireWebsite(e.target.checked)}
               style={{ width: '16px', height: '16px', accentColor: 'var(--acc)', marginTop: '1px' }} />
             <div>
               <p style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t1)' }}>Solo leads con sitio web <span style={{ color: 'var(--t3)', fontWeight: 400 }}>(recomendado)</span></p>
@@ -229,7 +259,7 @@ function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () =>
           </label>
 
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
-            <input type="checkbox" checked={autoEnrich} onChange={(e) => setAutoEnrich(e.target.checked)} disabled={loading}
+            <input type="checkbox" checked={autoEnrich} onChange={(e) => setAutoEnrich(e.target.checked)}
               style={{ width: '16px', height: '16px', accentColor: '#22C55E', marginTop: '1px' }} />
             <div>
               <p style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t1)' }}>
@@ -258,17 +288,16 @@ function SearchModal({ campaign, onClose }: { campaign: Campaign; onClose: () =>
             </p>
           </div>
           <div style={{ flex: 1, fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
-            Corre en background — podés navegar libremente. Recibirás una notificación al terminar.
+            Corre en background — podés navegar libremente.
           </div>
         </div>
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} disabled={loading} className="btn-secondary" style={{ fontSize: 'var(--text-sm)' }}>Cancelar</button>
-          <button onClick={handleStart} disabled={loading} className="btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', opacity: loading ? 0.7 : 1, minWidth: '130px', justifyContent: 'center' }}>
-            {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Search size={14} />}
-            {loading ? 'Iniciando...' : 'Iniciar búsqueda'}
+          <button type="button" onClick={onClose} className="btn-secondary" style={{ fontSize: 'var(--text-sm)' }}>Cancelar</button>
+          <button onClick={handleStart} className="btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', minWidth: '130px', justifyContent: 'center' }}>
+            <Search size={14} />Iniciar búsqueda
           </button>
         </div>
       </div>
@@ -284,7 +313,7 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose }: {
   onClose: () => void
 }) {
   const [signedByEmail, setSignedByEmail] = useState(currentUserEmail)
-  const [loading, setLoading] = useState(false)
+  const [maxDrafts, setMaxDrafts] = useState(Math.min(eligibleCount, 50))
 
   const SIGNERS = [
     { email: 'franco.sanmartin@maniaco.online', name: 'Franco' },
@@ -292,32 +321,33 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose }: {
     { email: 'noelia.bottallo@maniaco.online',  name: 'Noe' },
   ]
 
-  const estimatedCost = (eligibleCount * 0.004).toFixed(3)
+  const actualMax = Math.min(maxDrafts, eligibleCount)
+  const estimatedCost = (actualMax * 0.004).toFixed(3)
 
-  async function handleGenerate() {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/agents/writer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId: campaign.id, signedByEmail }),
+  function handleGenerate() {
+    const id = campaign.id
+    const email = signedByEmail
+    const max = actualMax
+    onClose()
+    toast.loading(`Generando ${max} draft${max !== 1 ? 's' : ''} en background...`, { id: 'writer-bg' })
+    fetch('/api/agents/writer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaignId: id, signedByEmail: email, max }),
+    })
+      .then(r => r.json())
+      .then((json: { created?: number; skipped?: number; failed?: number; error?: string }) => {
+        if (json.error) {
+          toast.error(json.error, { id: 'writer-bg' })
+        } else {
+          const parts = []
+          if (json.created) parts.push(`${json.created} nuevo${json.created !== 1 ? 's' : ''}`)
+          if (json.skipped) parts.push(`${json.skipped} ya tenían`)
+          if (json.failed)  parts.push(`${json.failed} error`)
+          toast.success(`Drafts listos: ${parts.join(', ') || 'sin cambios'}`, { id: 'writer-bg', duration: 5000 })
+        }
       })
-      const json = await res.json() as { created?: number; skipped?: number; failed?: number; error?: string }
-      if (!res.ok || json.error) {
-        toast.error(json.error ?? 'Error generando drafts')
-      } else {
-        const parts = []
-        if (json.created)  parts.push(`${json.created} draft${json.created !== 1 ? 's' : ''} generados`)
-        if (json.skipped)  parts.push(`${json.skipped} ya tenían draft`)
-        if (json.failed)   parts.push(`${json.failed} fallaron`)
-        toast.success(parts.join(' · ') || 'Sin cambios')
-        onClose()
-      }
-    } catch {
-      toast.error('Error de red')
-    } finally {
-      setLoading(false)
-    }
+      .catch(() => toast.error('Error de red al generar drafts', { id: 'writer-bg' }))
   }
 
   return (
@@ -330,22 +360,13 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose }: {
             <PenLine size={18} color="var(--acc)" />
             <h3 style={{ fontWeight: 700, color: 'var(--t1)', fontSize: 'var(--text-md)' }}>Generar drafts</h3>
           </div>
-          <button onClick={onClose} disabled={loading} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', display: 'flex', padding: '4px' }}><X size={16} /></button>
-        </div>
-
-        {/* Info */}
-        <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '12px' }}>
-          <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Canal</p>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t2)' }}>
-            {campaign.channel === 'whatsapp' ? 'WhatsApp (≤300 caracteres)' : campaign.channel === 'email' ? 'Email (asunto + cuerpo)' : 'WhatsApp (≤300 caracteres)'}
-          </p>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', display: 'flex', padding: '4px' }}><X size={16} /></button>
         </div>
 
         {/* Signer */}
         <div>
           <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>Firmante</label>
-          <select value={signedByEmail} onChange={(e) => setSignedByEmail(e.target.value)}
-            className="input" style={{ height: '38px' }} disabled={loading}>
+          <select value={signedByEmail} onChange={(e) => setSignedByEmail(e.target.value)} className="input" style={{ height: '38px' }}>
             {SIGNERS.map((s) => (
               <option key={s.email} value={s.email}>{s.name} ({s.email})</option>
             ))}
@@ -353,18 +374,37 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose }: {
           <p style={{ fontSize: '11px', color: 'var(--t3)', marginTop: '4px' }}>El mensaje firma en primera persona del socio seleccionado.</p>
         </div>
 
+        {/* Max */}
+        {eligibleCount > 0 && (
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--t2)', display: 'block', marginBottom: '4px' }}>Cantidad a generar</label>
+            <select value={maxDrafts} onChange={(e) => setMaxDrafts(Number(e.target.value))} className="input" style={{ height: '38px' }}>
+              {[20, 50].filter(n => n <= eligibleCount).map(n => (
+                <option key={n} value={n}>{n} leads</option>
+              ))}
+              <option value={eligibleCount}>Todos ({eligibleCount})</option>
+            </select>
+          </div>
+        )}
+
         {/* Cost / eligible */}
         <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r8)', padding: '10px 12px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
           <div>
-            <p style={{ fontSize: '10px', color: 'var(--t3)' }}>Leads elegibles</p>
-            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--t1)' }}>{eligibleCount > 0 ? eligibleCount : '—'}</p>
+            <p style={{ fontSize: '10px', color: 'var(--t3)' }}>A generar</p>
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--t1)' }}>{eligibleCount > 0 ? actualMax : '—'}</p>
+          </div>
+          <div>
+            <p style={{ fontSize: '10px', color: 'var(--t3)' }}>Canal</p>
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--t2)' }}>
+              {campaign.channel === 'email' ? 'Email' : 'WhatsApp'}
+            </p>
           </div>
           <div>
             <p style={{ fontSize: '10px', color: 'var(--t3)' }}>Costo estimado</p>
             <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--t1)' }}>~${estimatedCost}</p>
           </div>
-          <div style={{ flex: 1, fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
-            Claude Sonnet · solo leads enriquecidos con score ≥ 5/10 · omite leads con draft activo.
+          <div style={{ width: '100%', fontSize: '11px', color: 'var(--t3)', lineHeight: 1.4 }}>
+            Claude Sonnet · score ≥ 5/10 · omite leads con draft activo · corre en background.
           </div>
         </div>
 
@@ -376,11 +416,11 @@ function WriterModal({ campaign, eligibleCount, currentUserEmail, onClose }: {
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} disabled={loading} className="btn-secondary" style={{ fontSize: 'var(--text-sm)' }}>Cancelar</button>
-          <button onClick={handleGenerate} disabled={loading || eligibleCount === 0} className="btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', opacity: (loading || eligibleCount === 0) ? 0.7 : 1, minWidth: '150px', justifyContent: 'center' }}>
-            {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <PenLine size={14} />}
-            {loading ? 'Generando...' : `Generar${eligibleCount > 0 ? ` (${eligibleCount})` : ''}`}
+          <button type="button" onClick={onClose} className="btn-secondary" style={{ fontSize: 'var(--text-sm)' }}>Cancelar</button>
+          <button onClick={handleGenerate} disabled={eligibleCount === 0} className="btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', opacity: eligibleCount === 0 ? 0.5 : 1, minWidth: '150px', justifyContent: 'center' }}>
+            <PenLine size={14} />
+            {eligibleCount > 0 ? `Generar (${actualMax})` : 'Sin leads elegibles'}
           </button>
         </div>
       </div>
@@ -495,6 +535,7 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
         <LeadDrawer
           lead={selectedRow.leads_global}
           status={selectedRow.status}
+          campaignId={campaign.id}
           onClose={() => setSelectedRow(null)}
         />
       )}

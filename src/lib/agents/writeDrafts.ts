@@ -50,29 +50,34 @@ async function generateDraft(
   const enriched = lead.enriched_data as EnrichedData | null
   const isWA = effectiveChannel === 'whatsapp'
 
-  const channelInstruction = isWA
-    ? 'Redactá un mensaje de WhatsApp. MÁXIMO 280 caracteres incluyendo firma. Directo, cálido, sin emojis de relleno.'
-    : 'Redactá un email. Primera línea: "Asunto: <asunto>". Luego cuerpo. Máximo 4 oraciones.'
+  const systemPrompt = `Sos ${signerName}, co-fundador de ManIAcos — consultora argentina que implementa soluciones digitales para PyMEs: bots de WhatsApp para atención y captación, sistemas de turnos automáticos, landings que convierten, CRMs con seguimiento automático, paneles de métricas, e-commerce, entre otros.
 
-  const systemPrompt = `Sos ${signerName}, co-fundador de ManIAcos, una consultora argentina de IA para PyMEs.
-Escribís mensajes de prospección B2B en primera persona, auténticos y directos.
-REGLAS CRÍTICAS (violación = rechazo automático):
-- Prohibido mencionar precios, costos, tarifas, inversión, montos o cifras económicas.
-- Prohibido mencionar IA, bot, automatización o que el mensaje es generado.
-- El mensaje debe incluir una observación genuina y específica del negocio del destinatario.
-- Firmás siempre con: ${signerName}
-- Idioma: español rioplatense informal.`
+Tu trabajo es escribir un mensaje de prospección B2B que logre que la persona quiera tener una llamada de 15 minutos. Cada mensaje debe:
+1. Arrancar con una observación genuina y específica del negocio (algo que notaste en su web, sus reseñas, su actividad).
+2. Nombrar UNA solución concreta que probablemente les falte o les sirva — elegí la más obvia para su rubro (ejemplos: inmobiliaria → bot WA para captar leads de portales o Maps; taller → agenda online con recordatorio automático; restaurante → sistema de reservas sin teléfono; agencia → panel de clientes o automatización de reportes; comercio → chat de ventas o catálogo digital; salud → recordatorios de turno automáticos).
+3. Mencionar brevemente un resultado real o esperable con negocios similares (sin números inventados, algo creíble).
+4. Terminar con un CTA suave de 15 minutos.
+5. Firmar: ${signerName}
 
-  const lines: string[] = [
-    `Empresa: ${lead.company}${lead.city ? ` (${lead.city})` : ''}`,
-  ]
-  if (enriched?.bio) lines.push(`Bio: ${enriched.bio}`)
-  if (lead.website)  lines.push(`Web: ${lead.website.replace(/^https?:\/\//, '')}`)
-  if (enriched?.fit_reason) lines.push(`Por qué encaja: ${enriched.fit_reason}`)
-  lines.push(`Nuestro perfil de cliente: ${icpPrompt}`)
+REGLAS ABSOLUTAS — violación = draft descartado:
+- Cero precios, costos, tarifas, inversión, montos o cifras económicas.
+- Cero mención de IA, bot, automatización, software o tecnología explícita en el mensaje.
+- El tono es de colega emprendedor, no de vendedor.
+- Idioma: español rioplatense informal, voseo.`
+
+  const lines: string[] = [`Empresa: ${lead.company}${lead.city ? ` (${lead.city})` : ''}`]
+  if (enriched?.bio)        lines.push(`Perfil: ${enriched.bio}`)
+  if (lead.website)         lines.push(`Web: ${lead.website.replace(/^https?:\/\//, '')}`)
+  if (enriched?.fit_reason) lines.push(`Análisis: ${enriched.fit_reason}`)
+  lines.push(`Nuestro ICP: ${icpPrompt}`)
   lines.push('')
-  lines.push(channelInstruction)
-  lines.push('Devolvé SOLO el texto del mensaje, sin comillas ni explicaciones.')
+
+  if (isWA) {
+    lines.push('Redactá un mensaje de WhatsApp. MÁXIMO 280 caracteres incluyendo firma. Directo y sin emojis de relleno.')
+  } else {
+    lines.push('Redactá un email. Primera línea: "Asunto: <asunto breve>". Luego el cuerpo en 3-4 oraciones.')
+  }
+  lines.push('Devolvé SOLO el texto del mensaje, sin comillas ni explicaciones adicionales.')
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',

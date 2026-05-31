@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       icpPrompt:      campaign.icp_prompt,
       channel:        campaign.channel,
       signedByEmail,
-      max:            Math.min(Math.max(1, rawMax), 20),
+      max:            Math.min(Math.max(1, rawMax), 50),
       leadIds,
     })
 
