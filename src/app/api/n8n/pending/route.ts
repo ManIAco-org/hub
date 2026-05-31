@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     drafts: (data ?? []).map((d) => {
-      const lead = d.leads_global as Record<string, unknown> | null
+      const lead = d.leads_global as unknown as Record<string, unknown> | null
       return {
         draftId:       d.id,
         channel:       d.channel,
