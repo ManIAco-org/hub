@@ -695,6 +695,8 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
   const [showWriter, setShowWriter] = useState(false)
   const [selectedRow, setSelectedRow] = useState<CampaignLeadFull | null>(null)
   const [runningAction, setRunningAction] = useState<'search' | 'enrich' | 'write' | null>(null)
+  // draft status map: leadGlobalId → 'pending' | 'approved' | 'sent'
+  const [draftMap, setDraftMap] = useState<Record<string, DraftStatus>>({})
 
   const loadLeads = useCallback(async () => {
     setLoading(true)
@@ -706,6 +708,24 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
       .limit(200)
     setRows((data ?? []) as unknown as CampaignLeadFull[])
     setLoading(false)
+    // Load draft statuses
+    const ids = (data ?? []).map((r: Record<string, unknown>) => (r.leads_global as Record<string,unknown>)?.id).filter(Boolean) as string[]
+    if (ids.length > 0) {
+      const { data: drafts } = await supabase
+        .from('drafts').select('lead_global_id, status')
+        .eq('campaign_id', campaign.id)
+        .in('lead_global_id', ids)
+        .in('status', ['pending', 'approved', 'sent'])
+      const map: Record<string, DraftStatus> = {}
+      const priority: Record<string, number> = { sent: 3, approved: 2, pending: 1 }
+      for (const d of drafts ?? []) {
+        const cur = map[d.lead_global_id]
+        if (!cur || (priority[d.status] ?? 0) > (priority[cur] ?? 0)) {
+          map[d.lead_global_id] = d.status as DraftStatus
+        }
+      }
+      setDraftMap(map)
+    }
   }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadLeads() }, [loadLeads])
@@ -865,9 +885,23 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <span style={{ fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-xs)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {lead.company}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--t1)', fontSize: 'var(--text-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                        {lead.company}
+                      </span>
+                      {(() => {
+                        const ds = draftMap[row.lead_global_id]
+                        if (!ds) return null
+                        const cfg = ds === 'sent' ? { label: '✉ Enviado', c: '#22C55E', bg: '#22C55E15' }
+                                  : ds === 'approved' ? { label: '✓ Aprobado', c: '#A3E635', bg: '#A3E63515' }
+                                  : { label: '✏ Draft', c: '#EAB308', bg: '#EAB30815' }
+                        return (
+                          <span style={{ fontSize: '9px', fontWeight: 700, color: cfg.c, background: cfg.bg, borderRadius: '4px', padding: '1px 5px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                            {cfg.label}
+                          </span>
+                        )
+                      })()}
+                    </div>
                     {enriched?.bio && (
                       <span style={{ fontSize: '10px', color: 'var(--t3)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '1px' }}>
                         {enriched.bio}
@@ -975,7 +1009,7 @@ function TabApproval({ campaign, userEmail }: { campaign: Campaign; userEmail: s
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--t3)', fontSize: 'var(--text-sm)' }}>Cargando drafts...</div>
 
   return (
-    <div style={{ margin: '-24px -28px' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {pendingCount === 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '80px 20px' }}>
           <CheckSquare size={32} color="var(--t3)" />
@@ -1066,7 +1100,7 @@ export function CampaignDetailPanel({ campaign, initialLeadCount }: {
           )
         })}
       </div>
-      <div style={{ padding: activeTab === 'aprovacion' ? '0' : '24px 28px', flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: activeTab === 'aprovacion' ? '0' : '24px 28px', flex: 1, overflowY: activeTab === 'aprovacion' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column' }}>
         {activeTab === 'resumen'    && <TabResumen campaign={campaign} leadCount={leadCount} />}
         {activeTab === 'leads'      && <TabLeads   campaign={campaign} currentUserEmail={currentUserEmail} />}
         {activeTab === 'aprovacion' && <TabApproval campaign={campaign} userEmail={currentUserEmail} />}
