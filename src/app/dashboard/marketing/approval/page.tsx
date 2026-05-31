@@ -20,7 +20,7 @@ export default async function ApprovalPage() {
 
   return (
     <DraftApprovalQueue
-      initialDrafts={(drafts ?? []) as Parameters<typeof DraftApprovalQueue>[0]['initialDrafts']}
+      initialDrafts={(drafts ?? []) as unknown as Parameters<typeof DraftApprovalQueue>[0]['initialDrafts']}
       userEmail={user.email!}
     />
   )
