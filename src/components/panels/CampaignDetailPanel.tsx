@@ -499,10 +499,10 @@ const JOB_CONFIG: Record<string, { label: string; color: string }> = {
 }
 
 function PipelinePanel({
-  campaign, rows, rawCount, enrichedCount, writerEligible,
+  campaign, rows, rawCount, enrichedCount, writerEligible, draftCount,
   runningAction, setRunningAction, setShowSearch, setShowWriter,
 }: {
-  campaign: Campaign; rows: CampaignLeadFull[]; rawCount: number; enrichedCount: number; writerEligible: number
+  campaign: Campaign; rows: CampaignLeadFull[]; rawCount: number; enrichedCount: number; writerEligible: number; draftCount: number
   runningAction: 'search' | 'enrich' | 'write' | null
   setRunningAction: (a: 'search' | 'enrich' | 'write' | null) => void
   setShowSearch: (v: boolean) => void; setShowWriter: (v: boolean) => void
@@ -518,8 +518,8 @@ function PipelinePanel({
       .limit(30)
     const filtered = ((data ?? []) as JobRecord[]).filter((j) => {
       const r = j.result as Record<string, unknown> | null
-      return (r?.campaignId === campaign.id) ||
-             (j as unknown as Record<string, unknown>).params !== undefined
+      const p = j as unknown as { params?: Record<string, unknown> }
+      return r?.campaignId === campaign.id || p.params?.campaignId === campaign.id
     })
     // fallback: show last 6 if no campaign filter matches
     setJobs(filtered.slice(0, 6))
@@ -539,9 +539,9 @@ function PipelinePanel({
   const approvedCount = rows.filter((r) => ['approved', 'sent', 'replied'].includes(r.status)).length
 
   // Proportions for the funnel bar (capped at 1)
-  const pEnriched  = total > 0 ? Math.min(enrichedCount / total, 1)  : 0
-  const pDraft     = total > 0 ? Math.min(writerEligible / total, 1) : 0
-  const pApproved  = total > 0 ? Math.min(approvedCount / total, 1)  : 0
+  const pEnriched  = total > 0 ? Math.min(enrichedCount / total, 1) : 0
+  const pDraft     = total > 0 ? Math.min(draftCount / total, 1)    : 0
+  const pApproved  = total > 0 ? Math.min(approvedCount / total, 1) : 0
 
   async function fireEnrich() {
     if (rawCount === 0 || runningAction === 'enrich') return
@@ -575,7 +575,7 @@ function PipelinePanel({
   const stages = [
     { key: 'total',    label: 'Total',        sub: `${rawCount} sin procesar`, count: total,         color: 'var(--t3)',  pct: 1 },
     { key: 'enrich',   label: 'Enriquecidos', sub: `score calc. por Haiku`,    count: enrichedCount,  color: '#06B6D4',   pct: pEnriched },
-    { key: 'draft',    label: 'Con draft',    sub: `score ≥ 5/10`,             count: writerEligible, color: 'var(--acc)', pct: pDraft },
+    { key: 'draft',    label: 'Con draft',    sub: `pendientes de aprobar`,     count: draftCount,     color: 'var(--acc)', pct: pDraft },
     { key: 'approved', label: 'Aprobados',    sub: `listos para enviar`,        count: approvedCount,  color: '#22C55E',   pct: pApproved },
   ]
 
@@ -839,6 +839,7 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
         rawCount={rawCount}
         enrichedCount={enrichedCount}
         writerEligible={writerEligible}
+        draftCount={Object.keys(draftMap).length}
         runningAction={runningAction}
         setRunningAction={setRunningAction}
         setShowSearch={setShowSearch}

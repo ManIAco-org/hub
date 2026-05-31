@@ -162,20 +162,12 @@ export async function scrapeLeads(opts: ScrapeLeadsOptions): Promise<ScrapeLeads
   // ── 1. Generate search query variants ────────────────────────────────────────
   const queries = await generateSearchQueries(icpPrompt, apiKey)
 
-  // ── 2. 30-day freshness dedup: IDs recently added to ANY campaign ─────────────
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-  const { data: recentlyUsed } = await supabase
-    .from('campaign_leads')
-    .select('lead_global_id')
-    .gte('added_at', thirtyDaysAgo)
-  const recentlyUsedIds = new Set(recentlyUsed?.map((r) => r.lead_global_id) ?? [])
-
-  // IDs already in this specific campaign (don't re-add)
+  // ── 2. IDs already in this specific campaign (don't re-add) ─────────────────
   const { data: alreadyInCampaign } = await supabase
     .from('campaign_leads').select('lead_global_id').eq('campaign_id', campaignId)
   const inCampaignIds = new Set(alreadyInCampaign?.map((r) => r.lead_global_id) ?? [])
 
-  // ── 3. Reuse leads already in leads_global that haven't been used recently ────
+  // ── 3. Reuse leads already in leads_global not yet in this campaign ───────────
   let reusedFromCache = 0
   const reusedIds: string[] = []
   const primaryCity = queries[0]?.location.split(' ')[0] ?? ''
@@ -183,7 +175,7 @@ export async function scrapeLeads(opts: ScrapeLeadsOptions): Promise<ScrapeLeads
   if (primaryCity.length >= 3) {
     const { data: cached } = await supabase
       .from('leads_global').select('id').ilike('city', `%${primaryCity}%`)
-    const eligible = cached?.filter((r) => !inCampaignIds.has(r.id) && !recentlyUsedIds.has(r.id)) ?? []
+    const eligible = cached?.filter((r) => !inCampaignIds.has(r.id)) ?? []
     for (const row of eligible) reusedIds.push(row.id)
     if (reusedIds.length > 0) {
       await supabase.from('campaign_leads').insert(

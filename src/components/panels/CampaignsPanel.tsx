@@ -291,17 +291,15 @@ function CampaignCard({ campaign, onClick, onDelete }: {
           </>
         ) : (
           <>
-            {hovered && (
-              <button
-                onClick={() => setConfirming(true)}
-                title="Eliminar campaña"
-                style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: 'var(--r6)', display: 'flex', alignItems: 'center', transition: 'color 120ms' }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = '#EF4444')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--t3)')}
-              >
-                <Trash2 size={14} />
-              </button>
-            )}
+            <button
+              onClick={() => setConfirming(true)}
+              title="Eliminar campaña"
+              style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: 'var(--r6)', display: 'flex', alignItems: 'center', transition: 'color 120ms' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#EF4444')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--t3)')}
+            >
+              <Trash2 size={14} />
+            </button>
             <ChevronRight size={16} color={hovered ? 'var(--acc)' : 'var(--t3)'} style={{ transition: 'color var(--t-normal)' }} />
           </>
         )}

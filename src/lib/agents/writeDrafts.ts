@@ -33,13 +33,6 @@ export interface WriteDraftsOptions {
   leadIds?: string[]
 }
 
-export interface WriteDraftsResult {
-  created: number
-  skipped: number
-  failed: number
-  errors: string[]
-}
-
 async function generateDraft(
   client: Anthropic,
   signerName: string,

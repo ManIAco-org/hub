@@ -43,7 +43,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'auto',
+          overflowX: 'hidden',
+          overflowY: 'auto',
         }}
       >
         {children}
