@@ -434,54 +434,248 @@ function TabResumen({ campaign, leadCount }: { campaign: Campaign; leadCount: nu
   )
 }
 
-// ── Action Card ───────────────────────────────────────────────────────────────
-function ActionCard({ icon, title, isRunning, runColor, count, countColor, countLabel, subtext, costText, disabled, onAction, actionLabel, actionIcon, variant = 'secondary' }: {
-  icon: React.ReactNode
-  title: string
-  isRunning: boolean
-  runColor: string
-  count: number
-  countColor?: string
-  countLabel: string
-  subtext: string
-  costText: string
-  disabled?: boolean
-  onAction: () => void
-  actionLabel: string
-  actionIcon: React.ReactNode
-  variant?: 'primary' | 'secondary'
+// ── Pipeline Panel ────────────────────────────────────────────────────────────
+interface JobRecord {
+  id: string; type: string; status: string
+  result: Record<string, unknown> | null
+  created_at: string; started_at: string | null; finished_at: string | null
+}
+
+function timeAgo(iso: string): string {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return 'hace un momento'
+  const m = Math.floor(s / 60)
+  if (m < 60) return `hace ${m}m`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `hace ${h}h`
+  return `hace ${Math.floor(h / 24)}d`
+}
+
+function jobSummary(job: JobRecord): string {
+  const r = job.result ?? {}
+  if (job.type === 'scrape') {
+    const ins = Number(r.inserted ?? 0), req = Number(r.requests ?? 0), reused = Number(r.reusedFromCache ?? 0)
+    const parts = []
+    if (ins > 0) parts.push(`${ins} nuevos leads`)
+    if (reused > 0) parts.push(`${reused} reutilizados`)
+    if (req > 0) parts.push(`${req} req SerpAPI`)
+    return parts.join(' · ') || 'sin resultados'
+  }
+  if (job.type === 'enrich') {
+    const enriched = Number(r.enriched ?? 0), failed = Number(r.failed ?? 0)
+    const parts = [`${enriched} enriquecidos`]
+    if (failed > 0) parts.push(`${failed} errores`)
+    return parts.join(' · ')
+  }
+  if (job.type === 'write') {
+    const created = Number(r.created ?? 0), skipped = Number(r.skipped ?? 0)
+    const parts = [`${created} drafts generados`]
+    if (skipped > 0) parts.push(`${skipped} ya tenían`)
+    return parts.join(' · ')
+  }
+  return ''
+}
+
+const JOB_CONFIG: Record<string, { label: string; color: string }> = {
+  scrape:       { label: 'Búsqueda',       color: 'var(--acc)' },
+  enrich:       { label: 'Enriquecimiento', color: '#06B6D4' },
+  scrape_enrich:{ label: 'Búsqueda + enriq.', color: '#06B6D4' },
+  write:        { label: 'Drafts',          color: '#22C55E' },
+}
+
+function PipelinePanel({
+  campaign, rows, rawCount, enrichedCount, writerEligible,
+  runningAction, setRunningAction, setShowSearch, setShowWriter,
+}: {
+  campaign: Campaign; rows: CampaignLeadFull[]; rawCount: number; enrichedCount: number; writerEligible: number
+  runningAction: 'search' | 'enrich' | 'write' | null
+  setRunningAction: (a: 'search' | 'enrich' | 'write' | null) => void
+  setShowSearch: (v: boolean) => void; setShowWriter: (v: boolean) => void
 }) {
-  const isDisabled = disabled || isRunning
+  const supabase = createClient()
+  const [jobs, setJobs] = useState<JobRecord[]>([])
+
+  const loadJobs = useCallback(async () => {
+    const { data } = await supabase
+      .from('agent_jobs')
+      .select('id, type, status, result, created_at, started_at, finished_at')
+      .order('created_at', { ascending: false })
+      .limit(30)
+    const filtered = ((data ?? []) as JobRecord[]).filter((j) => {
+      const r = j.result as Record<string, unknown> | null
+      return (r?.campaignId === campaign.id) ||
+             (j as unknown as Record<string, unknown>).params !== undefined
+    })
+    // fallback: show last 6 if no campaign filter matches
+    setJobs(filtered.slice(0, 6))
+  }, [campaign.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { loadJobs() }, [loadJobs])
+
+  useEffect(() => {
+    const ch = supabase.channel(`pipeline-jobs-${campaign.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'agent_jobs' }, () => { loadJobs(); setRunningAction(null) })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agent_jobs' }, () => loadJobs())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [campaign.id, loadJobs]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const total         = rows.length
+  const approvedCount = rows.filter((r) => ['approved', 'sent', 'replied'].includes(r.status)).length
+
+  // Proportions for the funnel bar (capped at 1)
+  const pEnriched  = total > 0 ? Math.min(enrichedCount / total, 1)  : 0
+  const pDraft     = total > 0 ? Math.min(writerEligible / total, 1) : 0
+  const pApproved  = total > 0 ? Math.min(approvedCount / total, 1)  : 0
+
+  function fireEnrich() {
+    if (rawCount === 0 || runningAction === 'enrich') return
+    setRunningAction('enrich')
+    toast.loading(`Enriqueciendo ${rawCount} leads...`, { id: 'enrich-bg' })
+    fetch('/api/agents/enrich', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: campaign.id, max: 100 }) })
+      .then(r => r.json())
+      .then((j: { job_id?: string; error?: string }) => {
+        if (j.error) { toast.error(j.error, { id: 'enrich-bg' }); setRunningAction(null) }
+        else toast.success('Enriquecimiento corriendo en background', { id: 'enrich-bg', duration: 5000 })
+      })
+      .catch(() => { toast.error('Error de red', { id: 'enrich-bg' }); setRunningAction(null) })
+  }
+
+  const stages = [
+    { key: 'total',    label: 'Total',        sub: `${rawCount} sin procesar`, count: total,         color: 'var(--t3)',  pct: 1 },
+    { key: 'enrich',   label: 'Enriquecidos', sub: `score calc. por Haiku`,    count: enrichedCount,  color: '#06B6D4',   pct: pEnriched },
+    { key: 'draft',    label: 'Con draft',    sub: `score ≥ 5/10`,             count: writerEligible, color: 'var(--acc)', pct: pDraft },
+    { key: 'approved', label: 'Aprobados',    sub: `listos para enviar`,        count: approvedCount,  color: '#22C55E',   pct: pApproved },
+  ]
+
+  const runningMap: Record<string, 'search' | 'enrich' | 'write'> = {
+    total: 'search', enrich: 'enrich', draft: 'write',
+  }
+
   return (
-    <div style={{ background: 'var(--s2)', border: `1px solid ${isRunning ? runColor : 'var(--border)'}`, borderRadius: 'var(--r8)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', overflow: 'hidden', transition: 'border-color 200ms' }}>
-      {isRunning && (
-        <div className="animate-pulse" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: runColor }} />
-      )}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {icon}
-          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{title}</span>
+    <div style={{ background: 'var(--s2)', border: '1px solid var(--border)', borderRadius: 'var(--r12)', overflow: 'hidden' }}>
+      {/* ── Header ── */}
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--t1)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Pipeline de outreach</span>
+          {runningAction && (
+            <span className="animate-pulse" style={{ marginLeft: '10px', fontSize: '11px', color: 'var(--acc)', fontWeight: 600 }}>
+              ● {runningAction === 'search' ? 'Buscando...' : runningAction === 'enrich' ? 'Enriqueciendo...' : 'Generando drafts...'}
+            </span>
+          )}
         </div>
-        {isRunning && <span style={{ fontSize: '10px', color: runColor, fontWeight: 600 }}>corriendo...</span>}
+        <button onClick={() => setShowSearch(true)} className="btn-primary"
+          style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: 'var(--text-xs)', padding: '6px 12px' }}>
+          <Search size={12} />Nueva búsqueda
+        </button>
       </div>
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline' }}>
-        <span style={{ fontSize: '22px', fontWeight: 700, color: countColor ?? 'var(--t1)', fontFamily: 'var(--mono)' }}>{count}</span>
-        <span style={{ fontSize: '11px', color: 'var(--t3)' }}>{countLabel}</span>
+
+      {/* ── Funnel stages ── */}
+      <div style={{ padding: '20px', display: 'flex', alignItems: 'stretch', gap: '0' }}>
+        {stages.map((stage, i) => {
+          const stageRunning = runningAction === runningMap[stage.key]
+          const isLast = i === stages.length - 1
+          return (
+            <div key={stage.key} style={{ flex: 1, display: 'flex', alignItems: 'stretch' }}>
+              <div style={{
+                flex: 1,
+                background: stageRunning ? `${stage.color}12` : 'var(--s1)',
+                border: `1px solid ${stageRunning ? stage.color : 'var(--border)'}`,
+                borderRadius: 'var(--r8)',
+                padding: '16px 14px',
+                display: 'flex', flexDirection: 'column', gap: '6px',
+                position: 'relative', overflow: 'hidden',
+                transition: 'border-color 200ms, background 200ms',
+              }}>
+                {stageRunning && (
+                  <div className="animate-pulse" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: stage.color }} />
+                )}
+                {/* Progress fill bar */}
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'var(--border)' }}>
+                  <div style={{ height: '100%', width: `${stage.pct * 100}%`, background: stage.color, opacity: 0.6, transition: 'width 600ms ease' }} />
+                </div>
+
+                <span style={{ fontSize: '10px', fontWeight: 700, color: stageRunning ? stage.color : 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                  {stage.label}
+                </span>
+                <span style={{ fontSize: '28px', fontWeight: 800, color: stage.count > 0 ? stage.color : 'var(--t3)', fontFamily: 'var(--mono)', lineHeight: 1 }}>
+                  {stage.count}
+                </span>
+                <span style={{ fontSize: '10px', color: 'var(--t3)', lineHeight: 1.3, marginBottom: '4px' }}>{stage.sub}</span>
+              </div>
+              {!isLast && (
+                <div style={{ width: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ color: 'var(--t3)', fontSize: '16px' }}>→</span>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
-      <div style={{ fontSize: '11px', color: 'var(--t3)', lineHeight: 1.5 }}>
-        <span>{subtext}</span>
-        <br />
-        <span style={{ opacity: 0.6 }}>{costText}</span>
+
+      {/* ── Action buttons ── */}
+      <div style={{ padding: '0 20px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
+        {/* Buscar */}
+        <div />  {/* total stage has no action besides header button */}
+        {/* Enriquecer */}
+        <button
+          onClick={fireEnrich}
+          disabled={rawCount === 0 || runningAction === 'enrich'}
+          className="btn-secondary"
+          style={{ fontSize: 'var(--text-xs)', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center', opacity: (rawCount === 0 || runningAction === 'enrich') ? 0.4 : 1 }}>
+          <Zap size={12} color="#06B6D4" />
+          {runningAction === 'enrich' ? 'Corriendo...' : rawCount > 0 ? `Enriquecer (${rawCount})` : 'Al día'}
+        </button>
+        {/* Generar drafts */}
+        <button
+          onClick={() => { if (runningAction !== 'write') setShowWriter(true) }}
+          disabled={writerEligible === 0 || runningAction === 'write'}
+          className="btn-secondary"
+          style={{ fontSize: 'var(--text-xs)', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center', opacity: (writerEligible === 0 || runningAction === 'write') ? 0.4 : 1 }}>
+          <PenLine size={12} color="var(--acc)" />
+          {runningAction === 'write' ? 'Corriendo...' : writerEligible > 0 ? `Generar (${writerEligible})` : 'Sin elegibles'}
+        </button>
+        {/* Cola de aprobación */}
+        <a
+          href="/dashboard/marketing/approval"
+          style={{ fontSize: 'var(--text-xs)', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center', background: approvedCount === 0 ? 'transparent' : '#22C55E18', border: `1px solid ${approvedCount > 0 ? '#22C55E40' : 'var(--border)'}`, borderRadius: 'var(--r6)', color: approvedCount > 0 ? '#22C55E' : 'var(--t3)', textDecoration: 'none', fontWeight: 500, transition: 'all 150ms' }}>
+          {approvedCount > 0 ? '✓' : '○'} Cola {approvedCount > 0 ? `(${approvedCount})` : '→'}
+        </a>
       </div>
-      <button
-        onClick={onAction}
-        disabled={isDisabled}
-        className={variant === 'primary' ? 'btn-primary' : 'btn-secondary'}
-        style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center', opacity: isDisabled ? 0.4 : 1 }}
-      >
-        {actionIcon}
-        {isRunning ? 'Corriendo...' : actionLabel}
-      </button>
+
+      {/* ── Activity log ── */}
+      {jobs.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--border)', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Actividad reciente</span>
+          {jobs.slice(0, 5).map((job) => {
+            const cfg = JOB_CONFIG[job.type] ?? { label: job.type, color: 'var(--t3)' }
+            const isRun = job.status === 'running' || job.status === 'queued'
+            const isFail = job.status === 'failed'
+            const summary = jobSummary(job)
+            return (
+              <div key={job.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px' }}>
+                <span style={{
+                  width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                  background: isRun ? `${cfg.color}30` : isFail ? '#EF444420' : `${cfg.color}20`,
+                  border: `1px solid ${isRun ? cfg.color : isFail ? '#EF4444' : cfg.color}40`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '9px',
+                }}>
+                  {isRun ? <span className="animate-pulse" style={{ color: cfg.color }}>●</span> : isFail ? '✗' : '✓'}
+                </span>
+                <span style={{ fontWeight: 600, color: isRun ? cfg.color : isFail ? '#EF4444' : 'var(--t2)', minWidth: '110px' }}>
+                  {cfg.label}
+                  {isRun && <span style={{ color: cfg.color }}> · corriendo</span>}
+                </span>
+                <span style={{ color: 'var(--t3)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {isRun ? 'procesando en background...' : isFail ? (String((job.result as Record<string,unknown>)?.error ?? 'error').slice(0, 60)) : summary}
+                </span>
+                <span style={{ color: 'var(--t3)', flexShrink: 0, opacity: 0.7 }}>{timeAgo(job.created_at)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -588,67 +782,17 @@ function TabLeads({ campaign, currentUserEmail }: { campaign: Campaign; currentU
         />
       )}
 
-      {/* ── 3 Action cards ───────────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-        {/* Card 1: Buscar */}
-        <ActionCard
-          icon={<Search size={13} color="var(--acc)" />}
-          title="Buscar"
-          isRunning={runningAction === 'search'}
-          runColor="var(--acc)"
-          count={rows.length}
-          countLabel="leads totales"
-          subtext={rawCount > 0 ? `${rawCount} sin procesar` : rows.length === 0 ? 'Sin leads todavía' : 'Todos procesados'}
-          costText="~$0.002/request · SerpAPI"
-          onAction={() => setShowSearch(true)}
-          actionLabel="Buscar más"
-          actionIcon={<Search size={12} />}
-          variant="primary"
-        />
-        {/* Card 2: Enriquecer */}
-        <ActionCard
-          icon={<Zap size={13} color="#22C55E" />}
-          title="Enriquecer"
-          isRunning={runningAction === 'enrich'}
-          runColor="#22C55E"
-          count={rawCount}
-          countColor={rawCount > 0 ? '#22C55E' : undefined}
-          countLabel="sin enriquecer"
-          subtext={enrichedCount > 0 ? `${enrichedCount} ya enriquecidos` : 'score 0-10 + bio + razón'}
-          costText={`~$${(rawCount * 0.001).toFixed(3)} est. · Haiku`}
-          disabled={rawCount === 0}
-          onAction={() => {
-            if (rawCount === 0 || runningAction === 'enrich') return
-            setRunningAction('enrich')
-            toast.loading(`Enriqueciendo ${rawCount} leads...`, { id: 'enrich-bg' })
-            fetch('/api/agents/enrich', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: campaign.id, max: 100 }) })
-              .then(r => r.json())
-              .then((j: { job_id?: string; error?: string }) => {
-                if (j.error) { toast.error(j.error, { id: 'enrich-bg' }); setRunningAction(null) }
-                else toast.success('Enriquecimiento corriendo en background', { id: 'enrich-bg', duration: 5000 })
-              })
-              .catch(() => { toast.error('Error de red', { id: 'enrich-bg' }); setRunningAction(null) })
-          }}
-          actionLabel={rawCount > 0 ? `Enriquecer (${rawCount})` : 'Sin pendientes'}
-          actionIcon={<Zap size={12} />}
-        />
-        {/* Card 3: Drafts */}
-        <ActionCard
-          icon={<PenLine size={13} color="var(--acc)" />}
-          title="Drafts"
-          isRunning={runningAction === 'write'}
-          runColor="var(--acc)"
-          count={writerEligible}
-          countColor={writerEligible > 0 ? 'var(--acc)' : undefined}
-          countLabel="listos (score ≥ 5)"
-          subtext={campaign.channel === 'email' ? 'Email personalizado' : 'WhatsApp ≤300 chars'}
-          costText={`~$${(writerEligible * 0.004).toFixed(3)} est. · Sonnet`}
-          disabled={writerEligible === 0}
-          onAction={() => { if (runningAction !== 'write') setShowWriter(true) }}
-          actionLabel={writerEligible > 0 ? `Generar (${writerEligible})` : 'Sin elegibles'}
-          actionIcon={<PenLine size={12} />}
-        />
-      </div>
+      <PipelinePanel
+        campaign={campaign}
+        rows={rows}
+        rawCount={rawCount}
+        enrichedCount={enrichedCount}
+        writerEligible={writerEligible}
+        runningAction={runningAction}
+        setRunningAction={setRunningAction}
+        setShowSearch={setShowSearch}
+        setShowWriter={setShowWriter}
+      />
 
       {/* ── Filtros y tabla ───────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
